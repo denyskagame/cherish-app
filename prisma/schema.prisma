@@ -1,0 +1,426 @@
+// prisma/schema.prisma
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgcrypto]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TENANCY
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id            String   @id @default(cuid())
+  name          String                          // "Majestic Creative Agency"
+  slug          String   @unique                // subdomain: majestic.cherish.app
+  customDomain  String?  @unique                // photos.majesticcreative.ca
+  type          OrgType  @default(COUPLE)       // COUPLE | VENDOR | VENUE
+
+  // White-label theming (see docs/08 Part B)
+  logoUrl        String?
+  brandPrimary   String   @default("#C9A96E")    // gold
+  brandSecondary String   @default("#3D5A80")    // steel blue
+  brandAccent    String   @default("#7B4F2E")    // cognac
+
+  // Billing
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+  plan          Plan     @default(FREE)
+  planStatus    String   @default("active")     // active | past_due | canceled | trialing
+  trialEndsAt   DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members       Membership[]
+  events        Event[]
+
+  @@map("organizations")
+}
+
+enum OrgType {
+  COUPLE
+  VENDOR
+  VENUE
+}
+
+enum Plan {
+  FREE
+  VENDOR_PRO
+  VENUE_AGENCY
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  supabaseId    String?  @unique                // links to Supabase Auth user
+  createdAt     DateTime @default(now())
+
+  memberships   Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           Role     @default(OWNER)
+
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@map("memberships")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EVENT (a wedding)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Event {
+  id             String   @id @default(cuid())
+  organizationId String
+  slug           String                          // "sarah-michael-2026" (unique per org)
+
+  // Identity
+  coupleNames    String                          // "Sarah & Michael"
+  partnerAName   String?
+  partnerBName   String?
+  weddingDate    DateTime
+  timezone       String   @default("America/Toronto")
+
+  // Venue
+  venueName      String
+  venueAddress   String?
+  venueLat       Float?
+  venueLng       Float?
+
+  // Presentation
+  coverImageUrl  String?
+  defaultLocale  String   @default("en")         // "en" | "fr"
+  enabledLocales String[] @default(["en"])       // guest can toggle among these
+  themeOverride  Json?                           // per-event theme tokens (optional)
+
+  // Feature flags (operator toggles what guests see)
+  featureSeating   Boolean @default(true)
+  featureMenu      Boolean @default(true)
+  featureSchedule  Boolean @default(true)
+  featureMessages  Boolean @default(true)
+  featureAudio     Boolean @default(false)
+  featurePhotos    Boolean @default(true)
+  featureRsvp      Boolean @default(false)
+  featureFaceFind  Boolean @default(false)
+
+  // Storage config (see docs/00 + docs/04)
+  storageProvider     StorageProvider @default(GOOGLE_DRIVE)
+  googleRefreshToken  String?       // encrypted; only if provider = GOOGLE_DRIVE
+  googleDriveFolderId String?
+  storageBucketPrefix String?      // only if provider = R2 / S3, e.g. "org_x/event_y"
+
+  // Lifecycle
+  status             EventStatus @default(DRAFT)     // DRAFT | LIVE | ARCHIVED
+  archivedAt         DateTime?
+  dataRetentionUntil DateTime?                    // Law 25: auto-purge date
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  tables         Table[]
+  guests         Guest[]
+  menuItems      MenuItem[]
+  scheduleItems  ScheduleItem[]
+  messages       Message[]
+  photoUploads   PhotoUpload[]
+  rsvpResponses  RsvpResponse[]
+  translations   Translation[]
+  auditLogs      AuditLog[]
+
+  @@unique([organizationId, slug])
+  @@index([status, weddingDate])
+  @@map("events")
+}
+
+enum StorageProvider {
+  GOOGLE_DRIVE
+  R2
+  S3
+}
+
+enum EventStatus {
+  DRAFT
+  LIVE
+  ARCHIVED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SEATING
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Table {
+  id          String   @id @default(cuid())
+  eventId     String
+  number      Int
+  name        String                              // "Garden Roses"
+  nameFr      String?                             // bilingual table name
+  seatsCount  Int      @default(8)
+  positionX   Float    @default(0.5)              // 0..1 normalized on floor plan
+  positionY   Float    @default(0.5)
+  shape       TableShape @default(ROUND)
+  rotation    Float    @default(0)                // degrees, for rectangular tables
+
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  guests      Guest[]
+
+  @@unique([eventId, number])
+  @@map("tables")
+}
+
+enum TableShape {
+  ROUND
+  RECTANGULAR
+  OVAL
+  SQUARE
+  HEAD
+}
+
+model Guest {
+  id             String   @id @default(cuid())
+  eventId        String
+  fullName       String
+  nameNormalized String                            // lowercased, unaccented, for search
+  tableId        String?
+  seatNumber     Int?
+  groupLabel     String?                           // "College Friends"
+  partySize      Int      @default(1)              // for +1s / families
+  locale         String?                           // preferred language if known
+
+  // Thin RSVP (see docs/05) — coming? + party only. No meal/dietary: a wedding is not a restaurant.
+  rsvpStatus     RsvpStatus @default(PENDING)
+  plusOnes       Json?                             // [{ name }]
+
+  // Contact (optional; for thank-you automation)
+  email          String?
+  phone          String?
+  mailingAddress String?
+
+  createdAt      DateTime @default(now())
+
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  table          Table?   @relation(fields: [tableId], references: [id])
+
+  @@index([eventId, nameNormalized])
+  @@map("guests")
+}
+
+enum RsvpStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MENU & SCHEDULE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MenuItem {
+  id            String   @id @default(cuid())
+  eventId       String
+  course        String                              // "Starters" | "Mains" | "Desserts"
+  courseFr      String?
+  name          String
+  nameFr        String?
+  description   String                              // display only; guests choose at the table, not in advance
+  descriptionFr String?
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, isActive])
+  @@map("menu_items")
+}
+
+model ScheduleItem {
+  id            String   @id @default(cuid())
+  eventId       String
+  startsAt      DateTime
+  endsAt        DateTime?
+  title         String
+  titleFr       String?
+  description   String?
+  descriptionFr String?
+  icon          String?                             // "rings" | "dinner" | "dance" | "cake"
+  location      String?                             // "Rose Garden" | "Main Hall"
+  sortOrder     Int      @default(0)
+
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, startsAt])
+  @@map("schedule_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MESSAGES (text + audio)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Message {
+  id            String   @id @default(cuid())
+  eventId       String
+  guestName     String
+  guestId       String?                            // linked if scanned as a known guest
+
+  // Text
+  bodyText      String   @db.Text
+  bodyOriginal  String?  @db.Text                  // pre-AI-enhancement original
+  fontId        String                             // handwriting font id
+  locale        String   @default("en")
+  wasAiEnhanced Boolean  @default(false)
+
+  // Audio (Phase 2)
+  audioUrl      String?                            // storage key for voice message
+  audioDuration Int?                               // seconds
+  transcript    String?  @db.Text                  // Whisper/Claude transcript
+
+  // Moderation
+  status          MessageStatus @default(APPROVED)   // APPROVED | PENDING | HIDDEN | FLAGGED
+  moderationScore Float?                           // AI moderation confidence
+
+  ipHash        String?
+  createdAt     DateTime @default(now())
+
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, status, createdAt])
+  @@map("messages")
+}
+
+enum MessageStatus {
+  APPROVED
+  PENDING
+  HIDDEN
+  FLAGGED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PHOTOS & VIDEOS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PhotoUpload {
+  id               String   @id @default(cuid())
+  eventId          String
+  guestName        String?
+  guestId          String?
+
+  // Storage-agnostic
+  storageProvider  StorageProvider
+  storageKey       String                          // R2/S3 key OR Drive file id
+  originalFilename String
+  mimeType         String
+  fileSizeBytes    BigInt
+  width            Int?
+  height           Int?
+  durationSeconds  Int?                            // for video
+
+  // Derived assets
+  thumbnailKey     String?                         // small preview (managed storage only)
+  previewKey       String?                         // medium web preview
+  blurhash         String?                         // instant placeholder
+
+  // Face recognition (Phase 2)
+  faceEmbeddings   Json?                           // array of face vectors / face IDs
+  facesDetected    Int      @default(0)
+
+  // Lifecycle
+  status           UploadStatus @default(PENDING)  // PENDING | PROCESSING | READY | FAILED
+  moderationStatus String   @default("approved")   // NSFW screen result
+  createdAt        DateTime @default(now())
+
+  event            Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, status, createdAt])
+  @@map("photo_uploads")
+}
+
+enum UploadStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RSVP (public-facing responses, separate from imported Guest rows)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RsvpResponse {
+  id             String   @id @default(cuid())
+  eventId        String
+  guestId        String?
+  respondentName String
+  attending      Boolean
+  partySize      Int      @default(1)
+  songRequest    String?
+  note           String?
+  email          String?
+  createdAt      DateTime @default(now())
+
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("rsvp_responses")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  BILINGUAL OVERRIDES (arbitrary key/value translations per event)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Translation {
+  id        String @id @default(cuid())
+  eventId   String
+  locale    String                                 // "fr"
+  key       String                                 // "welcome.headline"
+  value     String @db.Text
+
+  event     Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, locale, key])
+  @@map("translations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AUDIT LOG (Law 25 accountability + operator activity)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  eventId   String?
+  actorType String                                 // "operator" | "guest" | "system"
+  actorId   String?
+  action    String                                 // "message.hide" | "guest.delete" | "data.export"
+  metadata  Json?
+  ipHash    String?
+  createdAt DateTime @default(now())
+
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, createdAt])
+  @@map("audit_logs")
+}

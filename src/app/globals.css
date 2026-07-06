@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand palette → generates bg-brand, text-brand, border-brand, etc. */
+  --color-brand: #C9A96E;
+  --color-brand-deep: #A8823A;
+  --color-accent: #7B4F2E;
+  --color-ink: #1C1008;
+  --color-paper: #F7F3EE;
+  --color-card: #FFFFFF;
+  --color-card-warm: #FFFDF8;
+  --color-champagne: #E8D9C5;
+  --color-muted: #8B7355;
+  --color-success: #276749;
+  --color-danger: #C53030;
+  --color-steel: #3D5A80;
+
+  /* Radius + shadow tokens */
+  --radius: 16px;
+  --radius-sm: 8px;
+  --shadow-card: 0 2px 14px rgb(28 16 8 / .07);
+  --shadow-lift: 0 6px 24px rgb(28 16 8 / .12);
+
+  /* Fonts → font-script / font-serif / font-sans */
+  --font-script: 'Great Vibes', cursive;
+  --font-serif: 'Cormorant Garamond', serif;
+  --font-sans: 'Inter', sans-serif;
+
+  /* Layout */
+  --max-width-app: 420px;
+}
+
+/* Map shadcn/ui variables to our palette so its components inherit the theme.
+   (shadcn init writes a :root block; merge these overrides into it.) */
+:root {
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-card);
+  --card-foreground: var(--color-ink);
+  --primary: var(--color-brand);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--color-champagne);
+  --muted: var(--color-champagne);
+  --muted-foreground: var(--color-muted);
+  --accent: var(--color-brand);
+  --accent-foreground: var(--color-ink);
+  --destructive: var(--color-danger);
+  --border: var(--color-champagne);
+  --input: var(--color-champagne);
+  --ring: var(--color-brand);
+  --radius: 0.75rem;
+}
+
+body { background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); }
+
+.font-script { font-family: var(--font-script); }
+.font-serif  { font-family: var(--font-serif); }
+
+/* Reusable card look as a component class (so guest components stay class-based, not inline) */
+@layer components {
+  .card-surface {
+    background: var(--color-card);
+    border: 1px solid var(--color-champagne);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 1.25rem; /* 20px */
+  }
+}
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.fade-up { animation: fadeUp .38s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-up { animation: none; }
+  svg animate { display: none; }
+}
