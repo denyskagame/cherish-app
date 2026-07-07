@@ -7,7 +7,7 @@ import { normalizeName } from "../src/lib/fuzzy-name";
 // menu, and schedule before the rehearsal (docs/08 §16: "before Day 13").
 const prisma = new PrismaClient();
 
-const EVENT_SLUG = process.env.EVENT_SLUG ?? "sarah-michael-2026";
+const EVENT_SLUG = process.env.EVENT_SLUG ?? "aline-norbert-2026";
 
 const TABLES = [
   { number: 1, name: "Garden Roses", nameFr: "Roses du jardin", seatsCount: 8, positionX: 0.25, positionY: 0.33 },
@@ -54,15 +54,18 @@ async function main() {
     },
   });
 
-  const event = await prisma.event.upsert({
-    where: { organizationId_slug: { organizationId: org.id, slug: EVENT_SLUG } },
-    update: {},
-    create: {
+  // Reset: remove any prior events for this org (cascade clears tables, guests,
+  // menu, schedule) so reseeding is clean even if the slug changed.
+  await prisma.event.deleteMany({ where: { organizationId: org.id } });
+
+  const event = await prisma.event.create({
+    data: {
       organizationId: org.id,
       slug: EVENT_SLUG,
-      coupleNames: "Sarah & Michael",
-      partnerAName: "Sarah",
-      partnerBName: "Michael",
+      coupleNames: "Aline & Norbert",
+      partnerAName: "Aline",
+      partnerBName: "Norbert",
+      // TODO: placeholder date/venue — replace with the real wedding details.
       weddingDate: new Date("2026-07-11T20:00:00Z"),
       timezone: "America/Toronto",
       venueName: "The Rosewater Room",
@@ -72,13 +75,6 @@ async function main() {
       status: "LIVE",
     },
   });
-
-  // Reset this event's children so reseeding is idempotent (guests before tables:
-  // guests reference tables).
-  await prisma.guest.deleteMany({ where: { eventId: event.id } });
-  await prisma.table.deleteMany({ where: { eventId: event.id } });
-  await prisma.menuItem.deleteMany({ where: { eventId: event.id } });
-  await prisma.scheduleItem.deleteMany({ where: { eventId: event.id } });
 
   const tableIdByNumber = new Map<number, string>();
   for (const t of TABLES) {
