@@ -1,15 +1,17 @@
 // prisma/schema.prisma
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client-js"
 }
 
+// Extensions are NOT managed by Prisma: Supabase pre-installs its own set
+// (uuid-ossp, supabase_vault, pg_stat_statements, pgcrypto), and letting Prisma
+// manage them flags all of those as drift on every migrate. We don't use any
+// DB-side extension (IDs are Prisma cuid(), not gen_random_uuid()).
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
-  extensions = [pgcrypto]
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
