@@ -1,11 +1,20 @@
 import { notFound } from "next/navigation";
+import { formatInTimeZone } from "date-fns-tz";
+import { enUS, fr as frLocale } from "date-fns/locale";
 import { resolveOrganization } from "@/lib/tenant";
 import { getEventOr404 } from "@/lib/db/scoped";
 import { NotFoundError } from "@/lib/errors";
+import { prisma } from "@/lib/prisma";
+import { getDictionaries } from "@/lib/i18n";
+import { GuestApp } from "@/components/guest/GuestApp";
+import type { EventInfo } from "@/components/guest/types";
 
-// Guest-facing entry point. Phase 0 setup renders the couple's name from the DB to
-// prove the tenant → event → data path end to end (docs/00 §0 "Done when").
-// The full guest app (seat, menu, schedule, book, photos) is built per docs/01–04.
+// Guest-facing entry point (docs/01). The server loads the event, its tables, and
+// both locales' dictionaries up front so the seat finder renders with zero loading
+// state and toggling FR↔EN is instant. Lookups themselves go through the uncached
+// API so last-minute seat changes appear on the next scan.
+export const dynamic = "force-dynamic";
+
 export default async function GuestEventPage({
   params,
 }: {
@@ -24,14 +33,56 @@ export default async function GuestEventPage({
     throw err;
   }
 
+  const [tables, features, dictionaries] = await Promise.all([
+    prisma.table.findMany({
+      where: { eventId: event.id },
+      orderBy: { number: "asc" },
+    }),
+    prisma.venueFeature.findMany({ where: { eventId: event.id } }),
+    getDictionaries(event),
+  ]);
+
+  const enabled = (
+    event.enabledLocales.length ? event.enabledLocales : [event.defaultLocale]
+  ).filter((l): l is "en" | "fr" => l === "en" || l === "fr");
+  const initialLocale: "en" | "fr" =
+    event.defaultLocale === "fr" ? "fr" : "en";
+
+  const dateFor = (loc: "en" | "fr") =>
+    formatInTimeZone(
+      event.weddingDate,
+      event.timezone,
+      loc === "fr" ? "EEEE d MMMM yyyy" : "EEEE, MMMM d, yyyy",
+      { locale: loc === "fr" ? frLocale : enUS },
+    );
+  const subtitles = {
+    en: `${dateFor("en")} · ${event.venueName}`,
+    fr: `${dateFor("fr")} · ${event.venueName}`,
+  };
+
+  const eventInfo: EventInfo = {
+    slug: event.slug,
+    coupleNames: event.coupleNames,
+    venueName: event.venueName,
+    venueAddress: event.venueAddress,
+    venueLat: event.venueLat,
+    venueLng: event.venueLng,
+    roomShape: event.roomShape,
+    roomWidth: event.roomWidth,
+    roomHeight: event.roomHeight,
+    tableLabelStyle: event.tableLabelStyle === "name" ? "name" : "number",
+  };
+
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center bg-paper px-6 pb-24 text-center">
-      <p className="font-serif text-muted text-lg italic">You are invited to celebrate</p>
-      <h1 className="font-script text-brand mt-2 text-[52px] leading-tight">
-        {event.coupleNames}
-      </h1>
-      <div className="my-6 h-px w-40 bg-gradient-to-r from-transparent via-brand to-transparent" />
-      <p className="text-muted text-sm">The full guest experience is coming soon ✦</p>
-    </main>
+    <GuestApp
+      event={eventInfo}
+      subtitles={subtitles}
+      tables={tables}
+      features={features}
+      brand={org.brandPrimary}
+      initialLocale={initialLocale}
+      enabledLocales={enabled.length ? enabled : [initialLocale]}
+      dictionaries={dictionaries}
+    />
   );
 }

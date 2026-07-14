@@ -1,0 +1,55 @@
+// Shapes returned by GET /api/events/[eventSlug]/guest and shared across the
+// guest seat-finder components (docs/01).
+
+export type TableShape = "round" | "rectangle";
+export type TableOrientation = "horizontal" | "vertical";
+
+/** One seat at the guest's own table, for the tap-to-zoom view. */
+export interface Seatmate {
+  seatNumber: number | null;
+  name: string;
+  initials: string;
+  isYou: boolean;
+}
+
+/** The identified guest's seat — everything the pass card + zoom need. */
+export interface Seat {
+  id: string;
+  name: string;
+  tableNumber: number | null;
+  tableName: string | null;
+  tableNameFr: string | null;
+  seatNumber: number | null;
+  groupLabel: string | null;
+  locationHint: string | null;
+  locationHintFr: string | null;
+  tableShape: TableShape;
+  tableOrientation: TableOrientation;
+  seatmates: Seatmate[];
+}
+
+export interface AmbiguousOption {
+  id: string;
+  name: string;
+  tableNumber: number | null;
+  tableName: string | null;
+}
+
+export type LookupResult =
+  | { found: true; guest: Seat }
+  | { found: "ambiguous"; options: AmbiguousOption[] }
+  | { found: false }
+  | { error: string };
+
+export interface EventInfo {
+  slug: string;
+  coupleNames: string;
+  venueName: string;
+  venueAddress: string | null;
+  venueLat: number | null;
+  venueLng: number | null;
+  roomShape: string;
+  roomWidth: number;
+  roomHeight: number;
+  tableLabelStyle: "number" | "name";
+}

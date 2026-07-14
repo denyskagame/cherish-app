@@ -113,6 +113,14 @@ model Event {
   venueLat       Float?
   venueLng       Float?
 
+  // Room map shell (outer boundary of the room map). Tables/landmarks are placed
+  // in normalized 0..1 coords inside this box; the shape + proportions are set by
+  // the operator to match the real hall.
+  roomShape      String @default("rectangle")      // "rectangle" | "square" | "l-shape"
+  roomWidth      Int    @default(360)              // relative units → map aspect ratio
+  roomHeight     Int    @default(470)
+  tableLabelStyle String @default("number")        // identify tables by "number" | "name"
+
   // Presentation
   coverImageUrl  String?
   defaultLocale  String   @default("en")         // "en" | "fr"
@@ -146,6 +154,7 @@ model Event {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   tables         Table[]
+  venueFeatures  VenueFeature[]
   guests         Guest[]
   menuItems      MenuItem[]
   scheduleItems  ScheduleItem[]
@@ -180,13 +189,16 @@ model Table {
   id          String   @id @default(cuid())
   eventId     String
   number      Int
-  name        String                              // "Garden Roses"
+  name        String                              // "Champagne Peonies"
   nameFr      String?                             // bilingual table name
   seatsCount  Int      @default(8)
-  positionX   Float    @default(0.5)              // 0..1 normalized on floor plan
+  shape       String   @default("round")          // "round" | "rectangle"
+  orientation String   @default("horizontal")     // rectangle base seat layout: "horizontal" | "vertical"
+  rotation    Float    @default(0)                // degrees; visual angle (rectangle tables)
+  locationHint String?                            // pass-card cue: "right side, near the dance floor"
+  locationHintFr String?                          // bilingual pass-card cue
+  positionX   Float    @default(0.5)              // 0..1 normalized on the room map
   positionY   Float    @default(0.5)
-  shape       TableShape @default(ROUND)
-  rotation    Float    @default(0)                // degrees, for rectangular tables
 
   event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   guests      Guest[]
@@ -195,12 +207,23 @@ model Table {
   @@map("tables")
 }
 
-enum TableShape {
-  ROUND
-  RECTANGULAR
-  OVAL
-  SQUARE
-  HEAD
+// The room is data, not a decorative shell (docs/01 §9): landmarks render on the
+// room map. Positions + sizes are normalized 0..1 fractions of the room.
+model VenueFeature {
+  id       String @id @default(cuid())
+  eventId  String
+  type     String // "stage" | "danceFloor" | "dj" | "buffet" | "bar" | "entrance" | "custom"
+  label    String
+  x        Float
+  y        Float
+  width    Float
+  height   Float
+  rotation Float  @default(0) // degrees; visual angle
+
+  event    Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("venue_features")
 }
 
 model Guest {

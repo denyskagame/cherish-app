@@ -9,22 +9,50 @@ const prisma = new PrismaClient();
 
 const EVENT_SLUG = process.env.EVENT_SLUG ?? "aline-norbert-2026";
 
+// 16 tables (docs/08 §16). shape: "round" | "rectangle"; orientation used by
+// rectangles. locationHint is the plain-language cue the pass card shows.
+// TODO(venue): replace names/shapes/positions/hints with the real Aline & Norbert floor plan.
 const TABLES = [
-  { number: 1, name: "Garden Roses", nameFr: "Roses du jardin", seatsCount: 8, positionX: 0.25, positionY: 0.33 },
-  { number: 2, name: "White Lilies", nameFr: "Lys blancs", seatsCount: 8, positionX: 0.75, positionY: 0.33 },
-  { number: 3, name: "Champagne Peonies", nameFr: "Pivoines champagne", seatsCount: 8, positionX: 0.25, positionY: 0.62 },
-  { number: 4, name: "Golden Tulips", nameFr: "Tulipes dorées", seatsCount: 8, positionX: 0.75, positionY: 0.62 },
-  { number: 5, name: "Cherry Blossoms", nameFr: "Fleurs de cerisier", seatsCount: 10, positionX: 0.5, positionY: 0.88 },
+  { number: 1,  name: "Head Table",        nameFr: "Table d'honneur",     seatsCount: 10, shape: "rectangle", orientation: "horizontal", positionX: 0.50, positionY: 0.08, locationHint: "front and centre, on the stage" },
+  { number: 2,  name: "Garden Roses",      nameFr: "Roses du jardin",     seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.20, positionY: 0.26, locationHint: "left side, near the head table" },
+  { number: 3,  name: "White Lilies",      nameFr: "Lys blancs",          seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.40, positionY: 0.26, locationHint: "left-centre, near the head table" },
+  { number: 4,  name: "Champagne Peonies", nameFr: "Pivoines champagne",  seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.60, positionY: 0.26, locationHint: "right-centre, near the head table" },
+  { number: 5,  name: "Golden Tulips",     nameFr: "Tulipes dorées",      seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.80, positionY: 0.26, locationHint: "right side, near the head table" },
+  { number: 6,  name: "Cherry Blossoms",   nameFr: "Fleurs de cerisier",  seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.20, positionY: 0.44, locationHint: "left side, middle of the room" },
+  { number: 7,  name: "Wild Orchids",      nameFr: "Orchidées sauvages",  seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.40, positionY: 0.44, locationHint: "left-centre, middle of the room" },
+  { number: 8,  name: "Blue Hydrangea",    nameFr: "Hortensias bleus",    seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.60, positionY: 0.44, locationHint: "right-centre, middle of the room" },
+  { number: 9,  name: "Sunflowers",        nameFr: "Tournesols",          seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.80, positionY: 0.44, locationHint: "right side, middle of the room" },
+  { number: 10, name: "Lavender",          nameFr: "Lavande",             seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.20, positionY: 0.60, locationHint: "left side, near the bar" },
+  { number: 11, name: "Magnolias",         nameFr: "Magnolias",           seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.40, positionY: 0.60, locationHint: "left-centre, near the dance floor" },
+  { number: 12, name: "Dahlias",           nameFr: "Dahlias",             seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.60, positionY: 0.60, locationHint: "right-centre, near the dance floor" },
+  { number: 13, name: "Ranunculus",        nameFr: "Renoncules",          seatsCount: 8,  shape: "round",     orientation: "horizontal", positionX: 0.80, positionY: 0.60, locationHint: "right side, near the buffet" },
+  { number: 14, name: "Long Table A",      nameFr: "Grande table A",      seatsCount: 12, shape: "rectangle", orientation: "vertical",   positionX: 0.30, positionY: 0.80, locationHint: "back-left, along the wall" },
+  { number: 15, name: "Long Table B",      nameFr: "Grande table B",      seatsCount: 12, shape: "rectangle", orientation: "vertical",   positionX: 0.70, positionY: 0.80, locationHint: "back-right, along the wall" },
+  { number: 16, name: "Kids Table",        nameFr: "Table des enfants",   seatsCount: 6,  shape: "round",     orientation: "horizontal", positionX: 0.50, positionY: 0.88, locationHint: "near the entrance, by the DJ" },
 ];
 
-// Placeholder guests — includes accented names to exercise normalizeName().
+// Venue landmarks (docs/01 §9) — rendered as minimalist gold line-style zones.
+// TODO(venue): replace with the real room landmarks + positions.
+const VENUE_FEATURES = [
+  { type: "stage",      label: "Stage",       x: 0.30, y: 0.02, width: 0.40, height: 0.10 },
+  { type: "danceFloor", label: "Dance Floor", x: 0.38, y: 0.66, width: 0.24, height: 0.14 },
+  { type: "dj",         label: "DJ",          x: 0.46, y: 0.94, width: 0.08, height: 0.05 },
+  { type: "buffet",     label: "Buffet",      x: 0.88, y: 0.55, width: 0.10, height: 0.18 },
+  { type: "bar",        label: "Bar",         x: 0.02, y: 0.55, width: 0.10, height: 0.18 },
+  { type: "entrance",   label: "Entrance",    x: 0.44, y: 0.97, width: 0.12, height: 0.03 },
+];
+
+// Placeholder guests — accented names exercise normalizeName(); table 4 has a
+// full ring of seatmates (for the zoom view) and table 14 is a rectangle.
 const GUESTS = [
-  { fullName: "José García", tableNumber: 1, seatNumber: 1, groupLabel: "Family" },
-  { fullName: "Anne-Marie Tremblay", tableNumber: 1, seatNumber: 2, groupLabel: "Family" },
-  { fullName: "Michael Chen", tableNumber: 2, seatNumber: 1, groupLabel: "College Friends" },
-  { fullName: "Priya Sharma", tableNumber: 2, seatNumber: 2, groupLabel: "College Friends" },
-  { fullName: "François Léveillé", tableNumber: 3, seatNumber: 1, groupLabel: "Work" },
-  { fullName: "Emma Wilson", tableNumber: 5, seatNumber: 1, groupLabel: "Neighbours" },
+  { fullName: "José García", tableNumber: 4, seatNumber: 1, groupLabel: "College Friends" },
+  { fullName: "Anne-Marie Tremblay", tableNumber: 4, seatNumber: 2, groupLabel: "College Friends" },
+  { fullName: "Michael Chen", tableNumber: 4, seatNumber: 3, groupLabel: "College Friends" },
+  { fullName: "Priya Sharma", tableNumber: 4, seatNumber: 4, groupLabel: "College Friends" },
+  { fullName: "Sophie Martin", tableNumber: 4, seatNumber: 5, groupLabel: "College Friends" },
+  { fullName: "James Okafor", tableNumber: 4, seatNumber: 6, groupLabel: "College Friends" },
+  { fullName: "François Léveillé", tableNumber: 14, seatNumber: 1, groupLabel: "Work" },
+  { fullName: "Emma Wilson", tableNumber: 16, seatNumber: 1, groupLabel: "Neighbours" },
 ];
 
 const MENU = [
@@ -82,6 +110,10 @@ async function main() {
     tableIdByNumber.set(t.number, created.id);
   }
 
+  await prisma.venueFeature.createMany({
+    data: VENUE_FEATURES.map((f) => ({ eventId: event.id, ...f })),
+  });
+
   for (const g of GUESTS) {
     await prisma.guest.create({
       data: {
@@ -105,7 +137,7 @@ async function main() {
 
   console.log(
     `Seeded org "${org.name}" → event "${event.coupleNames}" (${EVENT_SLUG}): ` +
-      `${TABLES.length} tables, ${GUESTS.length} guests, ${MENU.length} menu items, ${SCHEDULE.length} schedule items.`,
+      `${TABLES.length} tables, ${VENUE_FEATURES.length} venue features, ${GUESTS.length} guests, ${MENU.length} menu items, ${SCHEDULE.length} schedule items.`,
   );
 }
 

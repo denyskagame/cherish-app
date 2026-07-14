@@ -1,0 +1,10 @@
+-- AlterTable
+ALTER TABLE "events" ADD COLUMN     "roomHeight" INTEGER NOT NULL DEFAULT 470,
+ADD COLUMN     "roomShape" TEXT NOT NULL DEFAULT 'rectangle',
+ADD COLUMN     "roomWidth" INTEGER NOT NULL DEFAULT 360;
+
+-- AlterTable
+ALTER TABLE "tables" ADD COLUMN     "rotation" DOUBLE PRECISION NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "venue_features" ADD COLUMN     "rotation" DOUBLE PRECISION NOT NULL DEFAULT 0;

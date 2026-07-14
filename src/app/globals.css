@@ -1,76 +1,106 @@
 @import "tailwindcss";
 
 @theme {
-  /* Brand palette → generates bg-brand, text-brand, border-brand, etc. */
+  /* Cherish Noir — dark-only palette (docs/08 §7, §12). Tokens generate
+     bg-bg, bg-card, text-text, text-brand, border-border, etc. */
+  --color-bg: #000000;
+  --color-card: #0f0f0f;
+  --color-button-dark: #1c1c1c;
   --color-brand: #C9A96E;
   --color-brand-deep: #A8823A;
-  --color-accent: #7B4F2E;
-  --color-ink: #1C1008;
-  --color-paper: #F7F3EE;
-  --color-card: #FFFFFF;
-  --color-card-warm: #FFFDF8;
-  --color-champagne: #E8D9C5;
-  --color-muted: #8B7355;
-  --color-success: #276749;
-  --color-danger: #C53030;
-  --color-steel: #3D5A80;
+  --color-seat-inactive: #282828;
+  --color-text: #D4CFC7;
+  --color-text-muted: #9a9a9a;
+  --color-border: #282828;
+  --color-success: #6BBF8A;
+  --color-danger: #E86B6B;
 
-  /* Radius + shadow tokens */
+  /* Radius + shadow tokens (shadows are black on the dark theme) */
   --radius: 16px;
   --radius-sm: 8px;
-  --shadow-card: 0 2px 14px rgb(28 16 8 / .07);
-  --shadow-lift: 0 6px 24px rgb(28 16 8 / .12);
+  --shadow-card: 0 2px 14px rgb(0 0 0 / 0.45);
+  --shadow-lift: 0 6px 24px rgb(0 0 0 / 0.6);
 
-  /* Fonts → font-script / font-serif / font-sans */
-  --font-script: 'Great Vibes', cursive;
-  --font-serif: 'Cormorant Garamond', serif;
-  --font-sans: 'Inter', sans-serif;
+  /* Fonts → font-display / font-sans */
+  --font-display: "Fraunces", serif;
+  --font-sans: "Instrument Sans", "Inter", sans-serif;
 
   /* Layout */
   --max-width-app: 420px;
 }
 
-/* Map shadcn/ui variables to our palette so its components inherit the theme.
+/* Map shadcn/ui variables to the dark palette so its components inherit the theme.
    (shadcn init writes a :root block; merge these overrides into it.) */
 :root {
-  --background: var(--color-paper);
-  --foreground: var(--color-ink);
+  --background: var(--color-bg);
+  --foreground: var(--color-text);
   --card: var(--color-card);
-  --card-foreground: var(--color-ink);
+  --card-foreground: var(--color-text);
   --primary: var(--color-brand);
-  --primary-foreground: #FFFFFF;
-  --secondary: var(--color-champagne);
-  --muted: var(--color-champagne);
-  --muted-foreground: var(--color-muted);
+  --primary-foreground: #141210; /* dark text on gold — never white on gold */
+  --secondary: var(--color-button-dark);
+  --muted: var(--color-button-dark);
+  --muted-foreground: var(--color-text-muted);
   --accent: var(--color-brand);
-  --accent-foreground: var(--color-ink);
+  --accent-foreground: #141210;
   --destructive: var(--color-danger);
-  --border: var(--color-champagne);
-  --input: var(--color-champagne);
+  --border: var(--color-border);
+  --input: var(--color-border);
   --ring: var(--color-brand);
   --radius: 0.75rem;
+
+  /* Dark is the only theme: tells the browser to render native controls,
+     scrollbars, and form widgets dark, and prevents a white flash. */
+  color-scheme: dark;
 }
 
-body { background: var(--color-paper); color: var(--color-ink); font-family: var(--font-sans); }
+html {
+  background: var(--color-bg);
+}
 
-.font-script { font-family: var(--font-script); }
-.font-serif  { font-family: var(--font-serif); }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  /* Native controls (range sliders, checkboxes, radios) use gold, not the
+     browser's default blue. */
+  accent-color: var(--color-brand);
+}
 
-/* Reusable card look as a component class (so guest components stay class-based, not inline) */
+::selection {
+  background: var(--color-brand);
+  color: #141210;
+}
+
+.font-display { font-family: var(--font-display); }
+.font-sans { font-family: var(--font-sans); }
+
+/* Reusable card look as a component class (so guest components stay class-based). */
 @layer components {
   .card-surface {
     background: var(--color-card);
-    border: 1px solid var(--color-champagne);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
     padding: 1.25rem; /* 20px */
   }
 }
 
-@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-.fade-up { animation: fadeUp .38s ease-out both; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.fade-up { animation: fadeUp 0.38s ease-out both; }
+
+/* Room map reveal — slides in below the pass card to draw the eye down (docs/01 §7). */
+@keyframes revealDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: none; }
+}
+.reveal-down { animation: revealDown 1s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .fade-up { animation: none; }
+  .fade-up,
+  .reveal-down { animation: none; }
   svg animate { display: none; }
 }
