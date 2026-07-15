@@ -7,7 +7,9 @@ import {
   ArrowUpRight,
   CalendarClock,
   Check,
+  Image as ImageIcon,
   LayoutGrid,
+  MessageSquare,
   SlidersHorizontal,
   UtensilsCrossed,
   Users,
@@ -54,15 +56,20 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  const [tables, guests, guestsSeated, landmarks] = await Promise.all([
-    prisma.table.count({ where: { eventId: event.id } }),
-    prisma.guest.count({ where: { eventId: event.id } }),
-    prisma.guest.count({ where: { eventId: event.id, tableId: { not: null } } }),
-    prisma.venueFeature.count({ where: { eventId: event.id } }),
-  ]);
+  const [tables, guests, guestsSeated, landmarks, menuItems, scheduleItems] =
+    await Promise.all([
+      prisma.table.count({ where: { eventId: event.id } }),
+      prisma.guest.count({ where: { eventId: event.id } }),
+      prisma.guest.count({ where: { eventId: event.id, tableId: { not: null } } }),
+      prisma.venueFeature.count({ where: { eventId: event.id } }),
+      prisma.menuItem.count({ where: { eventId: event.id } }),
+      prisma.scheduleItem.count({ where: { eventId: event.id } }),
+    ]);
 
   const seating = `/admin/${event.slug}/seating`;
   const guestsPage = `/admin/${event.slug}/guests`;
+  const menuPage = `/admin/${event.slug}/menu`;
+  const schedulePage = `/admin/${event.slug}/schedule`;
   const settings = `/admin/${event.slug}/settings`;
   const guestUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/${event.slug}`;
 
@@ -96,11 +103,25 @@ export default async function AdminDashboardPage() {
       done: guests > 0,
       href: guests > 0 ? seating : guestsPage,
     },
+    {
+      icon: UtensilsCrossed,
+      label: "Set the menu",
+      desc: menuItems > 0 ? `${menuItems} dishes` : "What guests will be served",
+      done: menuItems > 0,
+      href: menuPage,
+    },
+    {
+      icon: CalendarClock,
+      label: "Plan the day",
+      desc: scheduleItems > 0 ? `${scheduleItems} moments` : "The day-of timeline",
+      done: scheduleItems > 0,
+      href: schedulePage,
+    },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   const soon = [
-    { icon: UtensilsCrossed, label: "Menu", desc: "The courses guests will see" },
-    { icon: CalendarClock, label: "Schedule", desc: "The day-of timeline" },
+    { icon: MessageSquare, label: "Messages", desc: "The guest message book" },
+    { icon: ImageIcon, label: "Photos", desc: "Shared guest gallery" },
   ];
 
   return (

@@ -52,4 +52,7 @@ export interface EventInfo {
   roomWidth: number;
   roomHeight: number;
   tableLabelStyle: "number" | "name";
+  featureSeating: boolean;
+  featureMenu: boolean;
+  featureSchedule: boolean;
 }

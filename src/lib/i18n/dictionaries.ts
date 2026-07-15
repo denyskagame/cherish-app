@@ -48,6 +48,22 @@ export const en = {
   "nav.schedule": "SCHEDULE",
   "nav.book": "BOOK",
   "nav.photos": "PHOTOS",
+
+  // Menu
+  "menu.title": "The Menu",
+  "menu.subtitle": "What we'll be sharing this evening",
+  "menu.closer": "Bon appétit",
+  "menu.empty": "The menu will be shared here soon.",
+
+  // Schedule
+  "schedule.title": "Order of the Day",
+  "schedule.subtitle": "So you always know what's next",
+  "schedule.now": "Happening now",
+  "schedule.upNext": "Up next",
+  "schedule.inMin": "in {n} min",
+  "schedule.inHr": "in {h}h {m}min",
+  "schedule.startingSoon": "Starting soon",
+  "schedule.empty": "The schedule will be shared here soon.",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -93,4 +109,18 @@ export const fr: Record<I18nKey, string> = {
   "nav.schedule": "HORAIRE",
   "nav.book": "LIVRE",
   "nav.photos": "PHOTOS",
+
+  "menu.title": "Le Menu",
+  "menu.subtitle": "Ce que nous partagerons ce soir",
+  "menu.closer": "Bon appétit",
+  "menu.empty": "Le menu sera partagé ici bientôt.",
+
+  "schedule.title": "Déroulement de la journée",
+  "schedule.subtitle": "Pour toujours savoir ce qui suit",
+  "schedule.now": "En ce moment",
+  "schedule.upNext": "À suivre",
+  "schedule.inMin": "dans {n} min",
+  "schedule.inHr": "dans {h}h {m}min",
+  "schedule.startingSoon": "Bientôt",
+  "schedule.empty": "L’horaire sera partagé ici bientôt.",
 };

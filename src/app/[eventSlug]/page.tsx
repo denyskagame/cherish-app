@@ -59,6 +59,7 @@ export default async function GuestEventPage({
     en: `${dateFor("en")} · ${event.venueName}`,
     fr: `${dateFor("fr")} · ${event.venueName}`,
   };
+  const weddingDates = { en: dateFor("en"), fr: dateFor("fr") };
 
   const eventInfo: EventInfo = {
     slug: event.slug,
@@ -71,12 +72,16 @@ export default async function GuestEventPage({
     roomWidth: event.roomWidth,
     roomHeight: event.roomHeight,
     tableLabelStyle: event.tableLabelStyle === "name" ? "name" : "number",
+    featureSeating: event.featureSeating,
+    featureMenu: event.featureMenu,
+    featureSchedule: event.featureSchedule,
   };
 
   return (
     <GuestApp
       event={eventInfo}
       subtitles={subtitles}
+      weddingDates={weddingDates}
       tables={tables}
       features={features}
       brand={org.brandPrimary}

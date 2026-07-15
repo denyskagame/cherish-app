@@ -75,6 +75,16 @@ body {
 .font-display { font-family: var(--font-display); }
 .font-sans { font-family: var(--font-sans); }
 
+/* Foil-pressed gold text — a soft top-lit gradient clipped to the glyphs, for
+   menu/schedule headings and the couple's names. Falls back to solid brand. */
+.gold-foil {
+  color: var(--color-brand);
+  background: linear-gradient(170deg, #F0DEB4 0%, #D8BC85 30%, #C9A96E 55%, #9B7636 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* Reusable card look as a component class (so guest components stay class-based). */
 @layer components {
   .card-surface {
