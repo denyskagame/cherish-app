@@ -3,12 +3,14 @@ import { z } from "zod";
 import { fromZonedTime } from "date-fns-tz";
 import { prisma } from "@/lib/prisma";
 import { guardAdmin } from "@/lib/api";
+import { slugify, isSlugAvailable } from "@/lib/slug";
 
 export const dynamic = "force-dynamic";
 
 const Locale = z.enum(["en", "fr"]);
 
 const Patch = z.object({
+  slug: z.string().trim().min(1).max(60).optional(),
   coupleNames: z.string().trim().min(1).optional(),
   partnerAName: z.string().trim().nullable().optional(),
   partnerBName: z.string().trim().nullable().optional(),
@@ -41,10 +43,26 @@ export async function PATCH(
 
   const { eventId } = await params;
   const b = Patch.parse(await req.json());
-  const { weddingDate, timezone, ...rest } = b;
+  const { weddingDate, timezone, slug, ...rest } = b;
 
   const data: Record<string, unknown> = { ...rest };
   if (timezone !== undefined) data.timezone = timezone;
+
+  // Slug: normalize, then ensure it's unique within the org before changing it.
+  if (slug !== undefined) {
+    const normalized = slugify(slug);
+    if (!normalized)
+      return NextResponse.json({ error: "invalid_slug" }, { status: 400 });
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { organizationId: true },
+    });
+    if (!event)
+      return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    if (!(await isSlugAvailable(event.organizationId, normalized, eventId)))
+      return NextResponse.json({ error: "slug_taken" }, { status: 409 });
+    data.slug = normalized;
+  }
   if (weddingDate !== undefined) {
     // Interpret the wall-clock time in the effective timezone.
     const tz =
@@ -61,5 +79,5 @@ export async function PATCH(
   if (result.count === 0)
     return NextResponse.json({ error: "Event not found" }, { status: 404 });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, slug: data.slug ?? undefined });
 }

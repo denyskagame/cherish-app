@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 const TIMEZONES = [
@@ -30,6 +30,7 @@ const FIELD =
 
 export interface EventSettings {
   id: string;
+  slug: string;
   coupleNames: string;
   partnerAName: string;
   partnerBName: string;
@@ -54,6 +55,11 @@ export function EventSettingsForm({ event }: { event: EventSettings }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [slug, setSlug] = useState(event.slug);
+  const [origin, setOrigin] = useState("");
+  // One-time read of a client-only source (window has no server equivalent).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setOrigin(window.location.origin), []);
   const [enFr, setEnFr] = useState({
     en: event.enabledLocales.includes("en"),
     fr: event.enabledLocales.includes("fr"),
@@ -82,8 +88,15 @@ export function EventSettingsForm({ event }: { event: EventSettings }) {
       setBusy(false);
       return;
     }
+    const cleanSlug = slug.replace(/^-|-$/g, "");
+    if (!cleanSlug) {
+      setErr("The guest link can't be empty.");
+      setBusy(false);
+      return;
+    }
     const defaultLocale = String(f.get("defaultLocale") || "en");
     const body = {
+      slug: cleanSlug,
       coupleNames: String(f.get("coupleNames") || "").trim(),
       partnerAName: String(f.get("partnerAName") || "").trim() || null,
       partnerBName: String(f.get("partnerBName") || "").trim() || null,
@@ -106,8 +119,15 @@ export function EventSettingsForm({ event }: { event: EventSettings }) {
     });
     setBusy(false);
     if (res.ok) {
+      const data = await res.json().catch(() => ({}));
       setSaved(true);
+      // If the slug changed, the current URL is stale — move to the new one.
+      if (data.slug && data.slug !== event.slug) {
+        router.push(`/admin/${data.slug}/settings`);
+      }
       router.refresh();
+    } else if (res.status === 409) {
+      setErr("That guest link is already taken — try a different one.");
     } else {
       setErr("Please check the fields and try again.");
     }
@@ -119,6 +139,28 @@ export function EventSettingsForm({ event }: { event: EventSettings }) {
         Couple names *
         <input name="coupleNames" required defaultValue={event.coupleNames} className={FIELD} />
       </label>
+
+      <div className="text-text-muted text-xs">
+        Guest link (the QR / URL)
+        <div className="mt-1 flex items-stretch">
+          <span className="border-border bg-bg/40 text-text-muted/80 flex items-center rounded-l-[var(--radius-sm)] border border-r-0 px-2.5 text-xs">
+            {(origin || "…").replace(/^https?:\/\//, "")}/
+          </span>
+          <input
+            value={slug}
+            onChange={(e) =>
+              setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-"))
+            }
+            className="border-border bg-button-dark text-text w-full rounded-r-[var(--radius-sm)] border px-3 py-2 text-sm"
+            aria-label="Event slug"
+          />
+        </div>
+        <p className="text-text-muted/70 mt-1.5 text-[11px]">
+          ⚠ This is what your printed QR code points to. Lock it in{" "}
+          <b>before printing</b> — changing it afterward breaks any QR already out
+          there.
+        </p>
+      </div>
       <div className="flex gap-3">
         <label className="text-text-muted flex-1 text-xs">
           Partner A

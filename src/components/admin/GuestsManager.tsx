@@ -174,9 +174,22 @@ export function GuestsManager({
   }
 
   function downloadTemplate() {
+    // Only full_name is required. Row 1 assigns by table name, row 2 by number,
+    // and both leave optional columns blank to show they're not needed.
     const csv = Papa.unparse({
-      fields: ["full_name", "table_number", "seat_number", "group_label", "party_size", "email"],
-      data: [["Aline Dubois", "3", "2", "College Friends", "1", "aline@example.com"]],
+      fields: [
+        "full_name",
+        "table_name",
+        "table_number",
+        "seat_number",
+        "group_label",
+        "party_size",
+        "email",
+      ],
+      data: [
+        ["Aline Dubois", "Garden Roses", "", "2", "College Friends", "1", "aline@example.com"],
+        ["Marc Tremblay", "", "5", "", "", "", ""],
+      ],
     });
     downloadCsv(csv, "cherish-guest-template.csv");
   }
@@ -351,7 +364,8 @@ export function GuestsManager({
               {importing ? "Importing…" : "Drop a CSV here, or click to choose a file"}
             </p>
             <p className="text-text-muted mt-1 text-xs">
-              Columns: full_name, table_number, seat_number, group_label, party_size, email
+              Only <span className="text-text">full_name</span> is required. Optional:
+              table_name or table_number, seat_number, group_label, party_size, email
             </p>
           </div>
 

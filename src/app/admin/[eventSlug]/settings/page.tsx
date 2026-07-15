@@ -46,6 +46,7 @@ export default async function EventSettingsPage({
       <EventSettingsForm
         event={{
           id: event.id,
+          slug: event.slug,
           coupleNames: event.coupleNames,
           partnerAName: event.partnerAName ?? "",
           partnerBName: event.partnerBName ?? "",

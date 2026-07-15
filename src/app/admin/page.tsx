@@ -1,10 +1,10 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { formatInTimeZone } from "date-fns-tz";
 import { differenceInCalendarDays } from "date-fns";
 import {
   ArrowRight,
-  ArrowUpRight,
   CalendarClock,
   Check,
   Image as ImageIcon,
@@ -17,7 +17,8 @@ import { isAdminAuthenticated } from "@/lib/auth";
 import { resolveOrganization } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { CreateEventForm } from "@/components/admin/CreateEventForm";
-import { CopyField } from "@/components/admin/CopyField";
+import { QrShare } from "@/components/admin/QrShare";
+import { makeQr } from "@/lib/qr";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,13 @@ export default async function AdminDashboardPage() {
   const menuPage = `/admin/${event.slug}/menu`;
   const schedulePage = `/admin/${event.slug}/schedule`;
   const settings = `/admin/${event.slug}/settings`;
-  const guestUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/${event.slug}`;
+  // Build the guest URL from the actual host so the QR is correct wherever it's
+  // generated (localhost in dev, the real domain in production).
+  const h = await headers();
+  const host = h.get("host") ?? "";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const guestUrl = `${proto}://${host}/${event.slug}`;
+  const qr = await makeQr(guestUrl);
 
   const dateLine = formatInTimeZone(
     event.weddingDate,
@@ -239,22 +246,20 @@ export default async function AdminDashboardPage() {
       <section className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="card-surface flex flex-col">
           <h3 className="text-text-muted text-[11px] tracking-[0.16em] uppercase">
-            Guest link
+            One QR for everything
           </h3>
           <p className="text-text-muted mt-1 text-xs">
-            One QR / link for every guest — seat, and more.
+            Print it once — seat finder, menu, schedule &amp; message book, always live.
           </p>
-          <div className="mt-3">
-            <CopyField value={guestUrl} />
+          <div className="mt-4">
+            <QrShare
+              url={guestUrl}
+              svg={qr.svg}
+              png={qr.png}
+              printHref={`/qr/${event.slug}`}
+              guestHref={`/${event.slug}`}
+            />
           </div>
-          <a
-            href={`/${event.slug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-brand mt-3 inline-flex items-center gap-1 self-start text-sm hover:underline"
-          >
-            Open guest view <ArrowUpRight size={14} />
-          </a>
         </div>
 
         <div className="card-surface flex flex-col justify-between">

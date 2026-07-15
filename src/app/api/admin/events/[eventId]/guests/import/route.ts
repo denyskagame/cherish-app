@@ -21,6 +21,7 @@ const Row = z.object({
     emptyToUndef,
     z.coerce.number().int().positive().optional(),
   ),
+  table_name: z.preprocess(emptyToUndef, z.string().optional()),
   seat_number: z.preprocess(
     emptyToUndef,
     z.coerce.number().int().positive().optional(),
@@ -84,7 +85,10 @@ export async function POST(
       continue;
     }
 
-    // Ensure the referenced table exists (auto-created, idempotently).
+    // Resolve the table (auto-created, idempotently). Guests can reference a table
+    // by number, by name, or both. By number: upsert on the number, applying the
+    // name if given. By name only: match an existing table (case-insensitive) or
+    // create the next-numbered table with that name.
     let tableId: string | undefined;
     if (row.table_number) {
       const table = await prisma.table.upsert({
@@ -92,11 +96,27 @@ export async function POST(
         create: {
           eventId,
           number: row.table_number,
-          name: `Table ${row.table_number}`,
+          name: row.table_name ?? `Table ${row.table_number}`,
         },
-        update: {},
+        update: row.table_name ? { name: row.table_name } : {},
       });
       tableId = table.id;
+    } else if (row.table_name) {
+      const existing = await prisma.table.findFirst({
+        where: { eventId, name: { equals: row.table_name, mode: "insensitive" } },
+      });
+      if (existing) {
+        tableId = existing.id;
+      } else {
+        const max = await prisma.table.aggregate({
+          where: { eventId },
+          _max: { number: true },
+        });
+        const created = await prisma.table.create({
+          data: { eventId, number: (max._max.number ?? 0) + 1, name: row.table_name },
+        });
+        tableId = created.id;
+      }
     }
 
     const data = {
