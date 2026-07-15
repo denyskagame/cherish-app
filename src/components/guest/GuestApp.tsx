@@ -1,7 +1,13 @@
 "use client";
 import { useCallback, useState } from "react";
 import type { Table, VenueFeature } from "@prisma/client";
-import { CalendarClock, Ticket, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import {
+  BookHeart,
+  CalendarClock,
+  Ticket,
+  UtensilsCrossed,
+  type LucideIcon,
+} from "lucide-react";
 import { I18nProvider, useLocale, useSetLocale, useT } from "@/lib/i18n/client";
 import type { I18nKey } from "@/lib/i18n/dictionaries";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -9,6 +15,7 @@ import { DisambiguationSheet } from "./DisambiguationSheet";
 import { SeatFoundScreen } from "./SeatFoundScreen";
 import { MenuScreen } from "./MenuScreen";
 import { ScheduleTimeline } from "./ScheduleTimeline";
+import { MessageBook } from "./MessageBook";
 import type {
   AmbiguousOption,
   EventInfo,
@@ -47,7 +54,7 @@ type View =
   | { kind: "ambiguous"; options: AmbiguousOption[] }
   | { kind: "found"; guest: Seat };
 
-type Tab = "seat" | "menu" | "schedule";
+type Tab = "seat" | "menu" | "schedule" | "book";
 
 function GuestShell({
   event,
@@ -68,6 +75,7 @@ function GuestShell({
     event.featureSeating && { key: "seat" as Tab, labelKey: "nav.seat" as I18nKey, icon: Ticket },
     event.featureMenu && { key: "menu" as Tab, labelKey: "nav.menu" as I18nKey, icon: UtensilsCrossed },
     event.featureSchedule && { key: "schedule" as Tab, labelKey: "nav.schedule" as I18nKey, icon: CalendarClock },
+    event.featureMessages && { key: "book" as Tab, labelKey: "nav.book" as I18nKey, icon: BookHeart },
   ].filter((x): x is { key: Tab; labelKey: I18nKey; icon: LucideIcon } => Boolean(x));
 
   const [tab, setTab] = useState<Tab>(navTabs[0]?.key ?? "seat");
@@ -156,9 +164,13 @@ function GuestShell({
               dates={weddingDates}
             />
           </div>
-        ) : (
+        ) : tab === "schedule" ? (
           <div className="py-8">
             <ScheduleTimeline slug={event.slug} />
+          </div>
+        ) : (
+          <div className="py-8">
+            <MessageBook slug={event.slug} />
           </div>
         )}
       </div>

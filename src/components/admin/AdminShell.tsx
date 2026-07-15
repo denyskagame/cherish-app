@@ -136,7 +136,7 @@ export function AdminShell({
     { label: "Seating", icon: LayoutGrid, href: base ? `${base}/seating` : undefined },
     { label: "Menu", icon: UtensilsCrossed, href: base ? `${base}/menu` : undefined },
     { label: "Schedule", icon: CalendarClock, href: base ? `${base}/schedule` : undefined },
-    { label: "Messages", icon: MessageSquare },
+    { label: "Messages", icon: MessageSquare, href: base ? `${base}/messages` : undefined },
     { label: "Photos", icon: ImageIcon },
     { label: "Settings", icon: Settings, href: base ? `${base}/settings` : undefined },
   ].map((it) => ({

@@ -55,4 +55,5 @@ export interface EventInfo {
   featureSeating: boolean;
   featureMenu: boolean;
   featureSchedule: boolean;
+  featureMessages: boolean;
 }

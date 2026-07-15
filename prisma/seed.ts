@@ -70,6 +70,15 @@ const SCHEDULE = [
   { startsAt: "2026-07-12T00:30:00Z", title: "Cake Cutting", titleFr: "Gâteau", icon: "cake", location: "Main Hall", sortOrder: 5 },
 ];
 
+const MESSAGES = [
+  { guestName: "Claire Beaumont", fontId: "great-vibes", locale: "en", status: "APPROVED", bodyText: "From the little café in Montréal to this beautiful day — watching your love grow has been one of my life's great joys. Here's to forever, you two.", createdAt: "2026-07-11T22:14:00Z" },
+  { guestName: "Julien Rousseau", fontId: "caveat", locale: "fr", status: "APPROVED", bodyText: "Aline, Norbert — vous êtes la preuve que les plus belles histoires commencent par une amitié. Tout mon amour pour la suite. ❤", createdAt: "2026-07-11T22:31:00Z" },
+  { guestName: "The Okonkwo Family", fontId: "dancing", locale: "en", status: "APPROVED", bodyText: "Wishing you a lifetime of laughter, quiet mornings, and dancing in the kitchen. We love you both.", createdAt: "2026-07-11T22:48:00Z" },
+  { guestName: "Sophie Tremblay", fontId: "sacramento", locale: "fr", status: "APPROVED", bodyText: "Que votre vie soit remplie de tendresse et d'aventures. Félicitations mes chers amis !", createdAt: "2026-07-11T23:05:00Z" },
+  { guestName: "Marcus Lee", fontId: "satisfy", locale: "en", status: "APPROVED", bodyText: "Norbert, I still remember you rehearsing your vows on our hike in Whistler. Today they were perfect. So happy for you both.", createdAt: "2026-07-11T23:22:00Z" },
+  { guestName: "Anonymous Guest", fontId: "caveat", locale: "en", status: "PENDING", bodyText: "Congratulations to the happy couple — can't wait to celebrate all night!", createdAt: "2026-07-11T23:40:00Z" },
+];
+
 async function main() {
   const org = await prisma.organization.upsert({
     where: { slug: "the-brothers-wedding" },
@@ -135,9 +144,21 @@ async function main() {
     data: SCHEDULE.map((s) => ({ eventId: event.id, ...s, startsAt: new Date(s.startsAt) })),
   });
 
+  await prisma.message.createMany({
+    data: MESSAGES.map((m) => ({
+      eventId: event.id,
+      guestName: m.guestName,
+      bodyText: m.bodyText,
+      fontId: m.fontId,
+      locale: m.locale,
+      status: m.status as "APPROVED" | "PENDING",
+      createdAt: new Date(m.createdAt),
+    })),
+  });
+
   console.log(
     `Seeded org "${org.name}" → event "${event.coupleNames}" (${EVENT_SLUG}): ` +
-      `${TABLES.length} tables, ${VENUE_FEATURES.length} venue features, ${GUESTS.length} guests, ${MENU.length} menu items, ${SCHEDULE.length} schedule items.`,
+      `${TABLES.length} tables, ${VENUE_FEATURES.length} venue features, ${GUESTS.length} guests, ${MENU.length} menu items, ${SCHEDULE.length} schedule items, ${MESSAGES.length} messages.`,
   );
 }
 

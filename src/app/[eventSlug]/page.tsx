@@ -75,6 +75,7 @@ export default async function GuestEventPage({
     featureSeating: event.featureSeating,
     featureMenu: event.featureMenu,
     featureSchedule: event.featureSchedule,
+    featureMessages: event.featureMessages,
   };
 
   return (

@@ -9,7 +9,6 @@ import {
   Check,
   Image as ImageIcon,
   LayoutGrid,
-  MessageSquare,
   SlidersHorizontal,
   UtensilsCrossed,
   Users,
@@ -119,10 +118,7 @@ export default async function AdminDashboardPage() {
     },
   ];
   const doneCount = steps.filter((s) => s.done).length;
-  const soon = [
-    { icon: MessageSquare, label: "Messages", desc: "The guest message book" },
-    { icon: ImageIcon, label: "Photos", desc: "Shared guest gallery" },
-  ];
+  const soon = [{ icon: ImageIcon, label: "Photos", desc: "Shared guest gallery" }];
 
   return (
     <main className="mx-auto max-w-4xl px-5 py-12 sm:py-16">

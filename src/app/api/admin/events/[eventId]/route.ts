@@ -28,6 +28,7 @@ const Patch = z.object({
   featureMessages: z.boolean().optional(),
   featurePhotos: z.boolean().optional(),
   featureRsvp: z.boolean().optional(),
+  moderateMessages: z.boolean().optional(),
 });
 
 /** Update the event's identity, venue, locales, status, and feature toggles. */

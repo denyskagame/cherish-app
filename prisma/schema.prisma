@@ -137,6 +137,9 @@ model Event {
   featureRsvp      Boolean @default(false)
   featureFaceFind  Boolean @default(false)
 
+  // Moderation (docs/03 §11): when on, guest messages land PENDING for review.
+  moderateMessages Boolean @default(false)
+
   // Storage config (see docs/00 + docs/04)
   storageProvider     StorageProvider @default(GOOGLE_DRIVE)
   googleRefreshToken  String?       // encrypted; only if provider = GOOGLE_DRIVE
