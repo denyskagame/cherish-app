@@ -31,10 +31,10 @@ function landmarkLabel(f: VenueFeature, locale: "en" | "fr"): string {
 function halfExtents(t: Table) {
   if (t.shape === "rectangle") {
     return t.orientation === "vertical"
-      ? { hw: 11, hh: 24 }
-      : { hw: 24, hh: 11 };
+      ? { hw: 15, hh: 32 }
+      : { hw: 32, hh: 15 };
   }
-  return { hw: 13, hh: 13 };
+  return { hw: 18, hh: 18 };
 }
 
 /** Seat centers for a table, relative to its centre (before rotation). */
@@ -43,7 +43,7 @@ function seatOffsets(t: Table) {
   const g = halfExtents(t);
   const out: { dx: number; dy: number }[] = [];
   if (t.shape === "rectangle") {
-    const gap = 7;
+    const gap = 9;
     const per = Math.ceil(n / 2);
     const rest = n - per;
     if (t.orientation === "vertical") {
@@ -66,7 +66,7 @@ function seatOffsets(t: Table) {
       place(rest, g.hh + gap);
     }
   } else {
-    const orbit = g.hw + 7;
+    const orbit = g.hw + 10;
     for (let i = 0; i < n; i++) {
       const a = (2 * Math.PI * i) / n - Math.PI / 2;
       out.push({ dx: orbit * Math.cos(a), dy: orbit * Math.sin(a) });
@@ -257,18 +257,18 @@ export function RoomMap({
                   <g key={i}>
                     {/* Blinking ring — on the guest's seat only, not the table. */}
                     {isMySeat && (
-                      <circle cx={sx} cy={sy} r={5} fill="none" stroke={brand} strokeWidth={1.5}>
-                        <animate attributeName="r" values="4;9;4" dur="1.6s" repeatCount="indefinite" />
+                      <circle cx={sx} cy={sy} r={6.5} fill="none" stroke={brand} strokeWidth={1.6}>
+                        <animate attributeName="r" values="5;12;5" dur="1.6s" repeatCount="indefinite" />
                         <animate attributeName="opacity" values="1;0;1" dur="1.6s" repeatCount="indefinite" />
                       </circle>
                     )}
                     <circle
                       cx={sx}
                       cy={sy}
-                      r={isMySeat ? 4.6 : 2.8}
+                      r={isMySeat ? 6 : 3.6}
                       fill={isMySeat ? brand : INACTIVE}
                       stroke={isMySeat ? "#A8823A" : INACTIVE_STROKE}
-                      strokeWidth={isMySeat ? 1 : 0.8}
+                      strokeWidth={isMySeat ? 1.2 : 0.9}
                     />
                   </g>
                 );
@@ -277,9 +277,9 @@ export function RoomMap({
             </g>
             <text
               x={cx}
-              y={cy + 4}
+              y={cy + 5}
               textAnchor="middle"
-              fontSize={12}
+              fontSize={15}
               fontFamily="'Fraunces',serif"
               fontWeight="600"
               fill={mine ? brand : MUTED}
@@ -297,7 +297,7 @@ export function RoomMap({
                     : g.hw + 32)
                 }
                 textAnchor="middle"
-                fontSize={10.5}
+                fontSize={12.5}
                 fontFamily="'Fraunces',serif"
                 fontStyle="italic"
                 fill={brand}

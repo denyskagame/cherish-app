@@ -16,7 +16,7 @@ import { SeatFoundScreen } from "./SeatFoundScreen";
 import { MenuScreen } from "./MenuScreen";
 import { ScheduleTimeline } from "./ScheduleTimeline";
 import { MessageBook } from "./MessageBook";
-import { Rings } from "./ornaments";
+import { Rings, Flourish } from "./ornaments";
 import type {
   AmbiguousOption,
   EventInfo,
@@ -189,7 +189,12 @@ function GuestShell({
       )}
 
       {/* Before a seat is found: a footer sits where the nav will be */}
-      {!showNav && <GuestFooter coupleNames={event.coupleNames} />}
+      {!showNav && (
+        <GuestFooter
+          coupleNames={event.coupleNames}
+          subtitle={subtitles[locale]}
+        />
+      )}
 
       {showNav && <BottomNav tabs={navTabs} active={tab} onSelect={setTab} />}
     </main>
@@ -208,14 +213,25 @@ function GuestLogo() {
   );
 }
 
-/** Quiet footer on the welcome screen (before the guest finds their seat). */
-function GuestFooter({ coupleNames }: { coupleNames: string }) {
+/** A refined sign-off footer on the welcome screen (before the seat is found). */
+function GuestFooter({
+  coupleNames,
+  subtitle,
+}: {
+  coupleNames: string;
+  subtitle: string;
+}) {
   const t = useT();
   return (
-    <footer className="mx-auto w-full max-w-[600px] px-6 pt-8 pb-1 text-center">
-      <div className="via-brand/40 mx-auto mb-3 h-px w-20 bg-gradient-to-r from-transparent to-transparent" />
-      <p className="font-display text-text text-base italic">{coupleNames}</p>
-      <p className="text-text-muted/60 mt-2 text-[11px] tracking-wide">
+    <footer className="mx-auto w-full max-w-[600px] px-6 pt-10 pb-2 text-center">
+      <Flourish className="mb-4" />
+      <p className="gold-foil font-display text-[19px] leading-tight tracking-[0.04em]">
+        {coupleNames}
+      </p>
+      <p className="text-text-muted mt-1.5 text-[11px] tracking-[0.12em]">
+        {subtitle}
+      </p>
+      <p className="text-text-muted/45 mt-5 text-[9px] tracking-[0.24em] uppercase">
         {t("common.privacy")}
       </p>
     </footer>
