@@ -16,6 +16,7 @@ import { SeatFoundScreen } from "./SeatFoundScreen";
 import { MenuScreen } from "./MenuScreen";
 import { ScheduleTimeline } from "./ScheduleTimeline";
 import { MessageBook } from "./MessageBook";
+import { Rings } from "./ornaments";
 import type {
   AmbiguousOption,
   EventInfo,
@@ -79,7 +80,10 @@ function GuestShell({
   ].filter((x): x is { key: Tab; labelKey: I18nKey; icon: LucideIcon } => Boolean(x));
 
   const [tab, setTab] = useState<Tab>(navTabs[0]?.key ?? "seat");
-  const showNav = navTabs.length > 1;
+  // The bottom nav (and its extra surfaces) only appear once a guest has found
+  // their seat; before that the screen is a clean welcome with a footer.
+  const [everFound, setEverFound] = useState(false);
+  const showNav = navTabs.length > 1 && everFound;
 
   const lookup = useCallback(async (params: URLSearchParams) => {
     setSearching(true);
@@ -103,6 +107,7 @@ function GuestShell({
       const data: LookupResult = await res.json();
       if ("found" in data && data.found === true) {
         setView({ kind: "found", guest: data.guest });
+        setEverFound(true);
       } else if ("found" in data && data.found === "ambiguous") {
         setView({ kind: "ambiguous", options: data.options });
       } else {
@@ -127,11 +132,11 @@ function GuestShell({
 
   return (
     <main className="bg-bg flex min-h-dvh flex-col py-6">
-      {enabledLocales.length > 1 && (
-        <div className="mx-auto flex w-full max-w-[600px] justify-end px-4">
-          <LocaleToggle />
-        </div>
-      )}
+      {/* Logo left, language switch right */}
+      <div className="mx-auto flex w-full max-w-[600px] items-center justify-between gap-3 px-4">
+        <GuestLogo />
+        {enabledLocales.length > 1 && <LocaleToggle />}
+      </div>
 
       <div className={"flex flex-1 flex-col " + (showNav ? "pb-24" : "")}>
         {tab === "seat" ? (
@@ -183,8 +188,37 @@ function GuestShell({
         />
       )}
 
+      {/* Before a seat is found: a footer sits where the nav will be */}
+      {!showNav && <GuestFooter coupleNames={event.coupleNames} />}
+
       {showNav && <BottomNav tabs={navTabs} active={tab} onSelect={setTab} />}
     </main>
+  );
+}
+
+/** The Cherish mark, top-left of the guest app. */
+function GuestLogo() {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Rings size={22} />
+      <span className="font-display text-text text-[17px] leading-none tracking-tight">
+        Cherish
+      </span>
+    </span>
+  );
+}
+
+/** Quiet footer on the welcome screen (before the guest finds their seat). */
+function GuestFooter({ coupleNames }: { coupleNames: string }) {
+  const t = useT();
+  return (
+    <footer className="mx-auto w-full max-w-[600px] px-6 pt-8 pb-1 text-center">
+      <div className="via-brand/40 mx-auto mb-3 h-px w-20 bg-gradient-to-r from-transparent to-transparent" />
+      <p className="font-display text-text text-base italic">{coupleNames}</p>
+      <p className="text-text-muted/60 mt-2 text-[11px] tracking-wide">
+        {t("common.privacy")}
+      </p>
+    </footer>
   );
 }
 

@@ -1,5 +1,12 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as RPointerEvent,
+} from "react";
 import type { Table, VenueFeature } from "@prisma/client";
 import {
   DndContext,
@@ -44,7 +51,106 @@ export interface RoomShell {
   height: number;
 }
 
-type Snap = { tables: Table[]; features: VenueFeature[]; room: RoomShell };
+/** A freehand shape drawn in the room (walls, aisles, the DJ corner…). Points
+ *  are normalized 0..1; rendered as a smooth curve. */
+export interface RoomDrawing {
+  id: string;
+  points: [number, number][];
+}
+
+type Pt = [number, number];
+
+/** Perpendicular distance from point p to the line a→b. */
+function perpDist(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2;
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+
+/** Ramer–Douglas–Peucker: drop points that don't add shape, killing the jitter
+ *  that makes a curve look "cornered". */
+function rdp(points: Pt[], eps: number): Pt[] {
+  if (points.length < 3) return points;
+  const a = points[0];
+  const b = points[points.length - 1];
+  let maxD = 0;
+  let idx = 0;
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = perpDist(points[i], a, b);
+    if (d > maxD) {
+      maxD = d;
+      idx = i;
+    }
+  }
+  if (maxD > eps) {
+    const left = rdp(points.slice(0, idx + 1), eps);
+    const right = rdp(points.slice(idx), eps);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [a, b];
+}
+
+/** Turn a raw stroke into a clean shape on release: a near-straight stroke snaps
+ *  to a straight line (and locks to true vertical/horizontal when close); a
+ *  curved stroke is de-noised so it renders as one smooth curve, no corners. */
+function finalizeStroke(points: Pt[]): Pt[] {
+  if (points.length < 2) return points;
+  const a = points[0];
+  const b = points[points.length - 1];
+  const chord = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (chord < 0.015) return points;
+
+  let dev = 0;
+  for (const p of points) dev = Math.max(dev, perpDist(p, a, b));
+
+  // Straight-ish stroke → a straight line, axis-aligned if within ~14°.
+  if (dev / chord < 0.09) {
+    const deg = Math.abs((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI);
+    if (Math.abs(deg - 90) < 14) {
+      const mx = (a[0] + b[0]) / 2;
+      return [[mx, a[1]], [mx, b[1]]]; // true vertical
+    }
+    if (deg < 14 || deg > 166) {
+      const my = (a[1] + b[1]) / 2;
+      return [[a[0], my], [b[0], my]]; // true horizontal
+    }
+    return [a, b]; // clean straight diagonal
+  }
+
+  // Curve → simplify away the jitter, keep the shape; the spline smooths the rest.
+  return rdp(points, 0.008);
+}
+
+/** Catmull-Rom → cubic Bézier: turns the raw captured points into a smooth curve
+ *  through them, so a shaky hand-drawn stroke renders as a clean line. */
+function smoothPath(points: [number, number][], W: number, H: number): string {
+  if (points.length < 2) return "";
+  const p = points.map(([x, y]) => [x * W, y * H] as [number, number]);
+  if (p.length === 2) return `M ${p[0][0]} ${p[0][1]} L ${p[1][0]} ${p[1][1]}`;
+  let d = `M ${p[0][0]} ${p[0][1]}`;
+  for (let i = 0; i < p.length - 1; i++) {
+    const p0 = p[i - 1] ?? p[i];
+    const p1 = p[i];
+    const p2 = p[i + 1];
+    const p3 = p[i + 2] ?? p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`;
+  }
+  return d;
+}
+
+type Snap = {
+  tables: Table[];
+  features: VenueFeature[];
+  room: RoomShell;
+  drawings: RoomDrawing[];
+};
 
 const FEATURE_TYPES = [
   "stage",
@@ -57,6 +163,13 @@ const FEATURE_TYPES = [
 ] as const;
 const LOCALE_KEY = "cherish.admin.locale";
 const CANVAS_PPU = 1;
+// Alignment grid (normalized 0..1). Tables snap to it on drop; the grid is drawn
+// only while dragging. 0.04 → 25 columns/rows.
+const GRID = 0.04;
+const GRID_FRACS = Array.from(
+  { length: Math.round(1 / GRID) - 1 },
+  (_, i) => (i + 1) * GRID,
+);
 
 const BTN =
   "rounded-[var(--radius-sm)] border-border text-text border px-3 py-2 text-sm transition active:scale-[.96] hover:bg-button-dark hover:border-brand/50";
@@ -71,6 +184,8 @@ export function TableEditor({
   initialFeatures,
   initialRoom,
   initialWarnings,
+  initialDrawings,
+  labelStyle,
 }: {
   eventId: string;
   eventSlug: string;
@@ -81,6 +196,8 @@ export function TableEditor({
   initialFeatures: VenueFeature[];
   initialRoom: RoomShell;
   initialWarnings: string[];
+  initialDrawings: RoomDrawing[];
+  labelStyle: "number" | "name";
 }) {
   const [tables, setTables] = useState<Table[]>(initialTables);
   const [guests, setGuests] = useState<GuestLite[]>(initialGuests);
@@ -98,6 +215,14 @@ export function TableEditor({
   const [saving, setSaving] = useState(false);
   const [locale, setLocale] = useState<AdminLocale>(initialLocale);
   const [history, setHistory] = useState<Snap[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [drawings, setDrawings] = useState<RoomDrawing[]>(initialDrawings);
+  const [drawMode, setDrawMode] = useState(false);
+  const [drawingNow, setDrawingNow] = useState<[number, number][] | null>(null);
+  const drawRef = useRef<[number, number][]>([]);
+  const [move, setMove] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  const moveRef = useRef<{ id: string; sx: number; sy: number; moved: boolean } | null>(null);
 
   const t = useMemo<AdminT>(() => makeAdminT(locale), [locale]);
 
@@ -124,7 +249,7 @@ export function TableEditor({
   const jsonHeaders = { "Content-Type": "application/json" };
 
   const pushHistory = () =>
-    setHistory((h) => [...h.slice(-24), { tables, features, room }]);
+    setHistory((h) => [...h.slice(-24), { tables, features, room, drawings }]);
 
   const patchTable = useCallback(
     async (id: string, data: Partial<Table>) => {
@@ -169,6 +294,7 @@ export function TableEditor({
     setFeatures((fs) => fs.map((f) => (f.id === id ? { ...f, ...data } : f)));
 
   const onDragEnd = (e: DragEndEvent) => {
+    setDragging(false);
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const id = String(e.active.id);
@@ -213,6 +339,19 @@ export function TableEditor({
       gs.map((g) => (g.tableId === id ? { ...g, tableId: null } : g)),
     );
     if (selectedId === id) setSelectedId(null);
+  };
+
+  const clearAllTables = async () => {
+    setClearConfirm(false);
+    pushHistory();
+    setTables([]);
+    setGuests((gs) => gs.map((g) => ({ ...g, tableId: null })));
+    setSelectedId(null);
+    await fetch(`${base}/tables/bulk-delete`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ all: true }),
+    });
   };
 
   const addFeature = async () => {
@@ -260,6 +399,106 @@ export function TableEditor({
     const nextRoom = { ...room, ...patch };
     setRoom(nextRoom);
     debounced("room", () => sendRoom(nextRoom));
+  };
+
+  // ── Freehand drawing (walls / aisles / the DJ corner…) ──────────────────────
+  const saveDrawings = useCallback(
+    async (next: RoomDrawing[]) => {
+      setSaving(true);
+      try {
+        await fetch(`${base}/room`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomDrawings: next }),
+        });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [base],
+  );
+  const drawPoint = (e: RPointerEvent): [number, number] | null => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return [
+      clamp01((e.clientX - rect.left) / rect.width),
+      clamp01((e.clientY - rect.top) / rect.height),
+    ];
+  };
+  const onDrawDown = (e: RPointerEvent) => {
+    const pt = drawPoint(e);
+    if (!pt) return;
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    drawRef.current = [pt];
+    setDrawingNow([pt]);
+  };
+  const onDrawMove = (e: RPointerEvent) => {
+    if (drawRef.current.length === 0) return;
+    const pt = drawPoint(e);
+    if (!pt) return;
+    const last = drawRef.current[drawRef.current.length - 1];
+    if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) < 0.006) return; // throttle
+    drawRef.current = [...drawRef.current, pt];
+    setDrawingNow(drawRef.current);
+  };
+  const onDrawUp = () => {
+    const pts = finalizeStroke(drawRef.current); // straighten / de-noise on release
+    drawRef.current = [];
+    setDrawingNow(null);
+    if (pts.length >= 2) {
+      pushHistory(); // so the new drawing can be undone
+      const next = [...drawings, { id: crypto.randomUUID(), points: pts }];
+      setDrawings(next);
+      saveDrawings(next);
+    }
+  };
+  const deleteDrawing = (id: string) => {
+    pushHistory();
+    const next = drawings.filter((d) => d.id !== id);
+    setDrawings(next);
+    saveDrawings(next);
+  };
+  // Drag a drawn shape to move it; a click without moving deletes it.
+  const onDrawingDown = (e: RPointerEvent, id: string) => {
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    moveRef.current = { id, sx: e.clientX, sy: e.clientY, moved: false };
+    setMove({ id, dx: 0, dy: 0 });
+  };
+  const onDrawingMove = (e: RPointerEvent) => {
+    const m = moveRef.current;
+    if (!m) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const dx = (e.clientX - m.sx) / rect.width;
+    const dy = (e.clientY - m.sy) / rect.height;
+    if (Math.hypot(dx, dy) > 0.008) m.moved = true;
+    setMove({ id: m.id, dx, dy });
+  };
+  const onDrawingUp = () => {
+    const m = moveRef.current;
+    const mv = move;
+    moveRef.current = null;
+    setMove(null);
+    if (!m) return;
+    if (!m.moved) {
+      deleteDrawing(m.id);
+      return;
+    }
+    if (!mv) return;
+    pushHistory();
+    const next = drawings.map((d) =>
+      d.id === m.id
+        ? {
+            ...d,
+            points: d.points.map(
+              ([x, y]) =>
+                [clamp01(x + mv.dx), clamp01(y + mv.dy)] as [number, number],
+            ),
+          }
+        : d,
+    );
+    setDrawings(next);
+    saveDrawings(next);
   };
 
   const revalidate = async () => {
@@ -328,6 +567,7 @@ export function TableEditor({
           : f;
       }),
     );
+    setDrawings(prev.drawings);
     setSelectedId(null);
     setSelectedFeatureId(null);
     void persistSnapshot(prev);
@@ -337,6 +577,7 @@ export function TableEditor({
     setSaving(true);
     try {
       await sendRoom(s.room);
+      await saveDrawings(s.drawings);
       await Promise.all([
         ...s.tables.map((tb) =>
           fetch(`${base}/tables/${tb.id}`, {
@@ -373,6 +614,20 @@ export function TableEditor({
       setSaving(false);
     }
   };
+
+  // Ctrl/⌘+Z → undo (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+      if (e.key.toLowerCase() !== "z") return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   // ── Guest ops ─────────────────────────────────────────────────────────────
   const addGuest = async (fullName: string, tableId: string, seatNumber: number | null) => {
@@ -415,6 +670,26 @@ export function TableEditor({
     return m;
   }, [guests]);
   const unassigned = useMemo(() => guests.filter((g) => !g.tableId), [guests]);
+
+  // Seat map (shown below the room) for the selected table.
+  const selectedTableGuests = useMemo(
+    () => (selected ? guests.filter((g) => g.tableId === selected.id) : []),
+    [guests, selected],
+  );
+  const seatConflicts = useMemo(() => {
+    const c = new Map<number, number>();
+    for (const g of selectedTableGuests)
+      if (g.seatNumber != null) c.set(g.seatNumber, (c.get(g.seatNumber) ?? 0) + 1);
+    return [...c.entries()].filter(([, n]) => n > 1).map(([s]) => s);
+  }, [selectedTableGuests]);
+  const handleSeatClick = (seat: number) => {
+    if (!selected) return;
+    if (selectedTableGuests.some((g) => g.seatNumber === seat)) return;
+    const unnumbered = selectedTableGuests.find((g) => g.seatNumber == null);
+    if (unnumbered) updateGuest(unnumbered.id, { seatNumber: seat });
+    else if (unassigned.length)
+      updateGuest(unassigned[0].id, { tableId: selected.id, seatNumber: seat });
+  };
 
   const dispW = Math.round(room.width * CANVAS_PPU);
   const dispH = Math.round(room.height * CANVAS_PPU);
@@ -460,9 +735,48 @@ export function TableEditor({
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <button onClick={addTable} className={BTN}>+ {t("btn.addTable")}</button>
         <button onClick={addFeature} className={BTN}>+ {t("btn.addLandmark")}</button>
+        <button
+          onClick={() => {
+            setDrawMode((m) => !m);
+            setSelectedId(null);
+            setSelectedFeatureId(null);
+          }}
+          aria-pressed={drawMode}
+          className={
+            drawMode
+              ? "bg-brand rounded-[var(--radius-sm)] px-3 py-2 text-sm font-medium text-[#141210]"
+              : BTN
+          }
+        >
+          ✎ {t("btn.draw")}
+        </button>
         {/* Auto-arrange hidden for now — re-enable via arrangeByDesign() in
             @/lib/seating-arrange when ready. */}
         <button onClick={revalidate} className={BTN}>{t("btn.check")}</button>
+        {tables.length > 0 &&
+          (clearConfirm ? (
+            <span className="border-danger/40 flex items-center gap-2 rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-xs">
+              <span className="text-text-muted">
+                {t("confirm.clearAll", { n: tables.length })}
+              </span>
+              <button onClick={clearAllTables} className="text-danger font-medium">
+                {t("common.yes")}
+              </button>
+              <button
+                onClick={() => setClearConfirm(false)}
+                className="text-text-muted hover:text-text"
+              >
+                {t("common.no")}
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setClearConfirm(true)}
+              className="border-border text-text-muted hover:border-danger/50 hover:text-danger rounded-[var(--radius-sm)] border px-3 py-2 text-sm transition"
+            >
+              {t("btn.clearTables")}
+            </button>
+          ))}
         <a
           href={`/${eventSlug}`}
           target="_blank"
@@ -529,7 +843,7 @@ export function TableEditor({
         </div>
         <label className="text-text-muted flex items-center gap-2">
           {t("room.width")} <span className="text-text tabular-nums">{room.width}</span>
-          <input type="range" min={240} max={560} step={10} value={room.width} className="w-24"
+          <input type="range" min={240} max={600} step={10} value={room.width} className="w-24"
             onChange={(e) => patchRoom({ width: Number(e.target.value) })} />
         </label>
         <label className="text-text-muted flex items-center gap-2">
@@ -540,7 +854,9 @@ export function TableEditor({
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-text-muted text-xs">{t("help.drag")}</p>
+        <p className={"text-xs " + (drawMode ? "text-brand" : "text-text-muted")}>
+          {drawMode ? t("help.drawMode") : t("help.drag")}
+        </p>
         <button
           onClick={undo}
           disabled={!canUndo}
@@ -554,7 +870,12 @@ export function TableEditor({
       {/* Canvas + inspector side by side (both top-aligned with the room) */}
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex-1">
-          <DndContext sensors={sensors} modifiers={[restrictToParentElement]} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            modifiers={[restrictToParentElement]}
+            onDragStart={() => setDragging(true)}
+            onDragEnd={onDragEnd}
+          >
             <div
               ref={canvasRef}
               className="relative mx-auto overflow-hidden"
@@ -574,6 +895,67 @@ export function TableEditor({
                   gold="#C9A96E"
                   strokeWidth={1.5}
                 />
+                {/* Alignment grid — fades in only while dragging. */}
+                <g
+                  style={{
+                    opacity: dragging || drawMode || move ? 1 : 0,
+                    transition: "opacity .18s ease-out",
+                  }}
+                >
+                  {GRID_FRACS.map((fx) => (
+                    <line
+                      key={`v${fx}`}
+                      x1={fx * room.width}
+                      y1={0}
+                      x2={fx * room.width}
+                      y2={room.height}
+                      stroke="#C9A96E"
+                      strokeOpacity={0.14}
+                      strokeWidth={0.75}
+                    />
+                  ))}
+                  {GRID_FRACS.map((fy) => (
+                    <line
+                      key={`h${fy}`}
+                      x1={0}
+                      y1={fy * room.height}
+                      x2={room.width}
+                      y2={fy * room.height}
+                      stroke="#C9A96E"
+                      strokeOpacity={0.14}
+                      strokeWidth={0.75}
+                    />
+                  ))}
+                </g>
+                {/* Freehand drawings — smooth curves through the drawn points */}
+                {drawings.map((dr) => (
+                  <path
+                    key={dr.id}
+                    d={smoothPath(dr.points, room.width, room.height)}
+                    fill="none"
+                    stroke="#C9A96E"
+                    strokeOpacity={0.85}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    transform={
+                      move?.id === dr.id
+                        ? `translate(${move.dx * room.width} ${move.dy * room.height})`
+                        : undefined
+                    }
+                  />
+                ))}
+                {drawingNow && drawingNow.length >= 2 && (
+                  <path
+                    d={smoothPath(drawingNow, room.width, room.height)}
+                    fill="none"
+                    stroke="#C9A96E"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray="5 3"
+                  />
+                )}
               </svg>
               {features.map((f) => (
                 <DraggableFeature
@@ -599,8 +981,151 @@ export function TableEditor({
                   }}
                 />
               ))}
+
+              {/* Draw mode: an overlay captures the stroke (and blocks table drag) */}
+              {drawMode && (
+                <div
+                  className="absolute inset-0 z-30 cursor-crosshair touch-none"
+                  onPointerDown={onDrawDown}
+                  onPointerMove={onDrawMove}
+                  onPointerUp={onDrawUp}
+                  onPointerCancel={onDrawUp}
+                />
+              )}
+              {/* Not drawing: drag a drawn shape to move it, or click to remove it */}
+              {!drawMode && drawings.length > 0 && (
+                <svg
+                  className="absolute inset-0 z-30 h-full w-full"
+                  viewBox={`0 0 ${room.width} ${room.height}`}
+                  preserveAspectRatio="none"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {drawings.map((dr) => (
+                    <path
+                      key={dr.id}
+                      d={smoothPath(dr.points, room.width, room.height)}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={14}
+                      strokeLinecap="round"
+                      transform={
+                        move?.id === dr.id
+                          ? `translate(${move.dx * room.width} ${move.dy * room.height})`
+                          : undefined
+                      }
+                      style={{
+                        pointerEvents: "stroke",
+                        cursor: move?.id === dr.id ? "grabbing" : "grab",
+                      }}
+                      onPointerDown={(e) => onDrawingDown(e, dr.id)}
+                      onPointerMove={onDrawingMove}
+                      onPointerUp={onDrawingUp}
+                      onPointerCancel={onDrawingUp}
+                    >
+                      <title>Drag to move · click to remove</title>
+                    </path>
+                  ))}
+                </svg>
+              )}
             </div>
           </DndContext>
+
+          {/* Zoomed table for the selected table — below the room, like the
+              guest's tap-to-zoom view, so you can see exactly how guests sit. */}
+          {selected && (
+            <div className="border-border card-surface mt-4">
+              <div className="mb-1 text-center">
+                <p className="text-text-muted text-[10px] tracking-[0.22em] uppercase">
+                  {t("insp.seatMapTitle")}
+                </p>
+                {labelStyle === "name" &&
+                ((locale === "fr" && selected.nameFr) || selected.name) ? (
+                  <>
+                    <h4 className="font-display text-brand text-2xl leading-tight italic">
+                      {(locale === "fr" && selected.nameFr) || selected.name}
+                    </h4>
+                    <p className="text-text-muted mt-0.5 text-xs">
+                      {t("insp.table")} {selected.number}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="font-display text-brand text-2xl leading-none">
+                      {t("insp.table")} {selected.number}
+                    </h4>
+                    {selected.name && (
+                      <p className="font-display text-text-muted mt-0.5 text-sm italic">
+                        {(locale === "fr" && selected.nameFr) || selected.name}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+                {/* The zoomed table */}
+                <div className="mx-auto h-56 w-56 shrink-0">
+                  <SeatMap
+                    table={selected}
+                    guests={selectedTableGuests}
+                    onSeatClick={handleSeatClick}
+                  />
+                </div>
+
+                {/* Who's here */}
+                <div className="min-w-0 flex-1 self-stretch">
+                  <div className="flex items-center justify-between">
+                    <p className="text-text-muted text-[11px] tracking-[0.14em] uppercase">
+                      {t("insp.guests")}
+                    </p>
+                    <span className="text-text-muted text-xs">
+                      {t("insp.seated", { n: selectedTableGuests.length, cap: selected.seatsCount })}
+                    </span>
+                  </div>
+                  <p className="text-text-muted mt-1 text-[11px]">
+                    {t("insp.tapSeatToAssign")}
+                  </p>
+                  {seatConflicts.map((s) => (
+                    <p key={s} className="text-danger mt-1 text-[11px]">
+                      ⚠ {t("insp.seatConflict", { n: s })}
+                    </p>
+                  ))}
+
+                  {selectedTableGuests.length === 0 ? (
+                    <p className="text-text-muted mt-3 text-sm">{t("insp.noOne")}</p>
+                  ) : (
+                    <ul className="mt-2 space-y-1.5">
+                      {[...selectedTableGuests]
+                        .sort((a, b) => (a.seatNumber ?? 99) - (b.seatNumber ?? 99))
+                        .map((g) => (
+                          <li
+                            key={g.id}
+                            className="border-border flex items-center gap-3 rounded-[var(--radius-sm)] border px-3 py-1.5"
+                          >
+                            <span className="bg-button-dark text-text-muted grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold">
+                              {seatInitials(g.fullName)}
+                            </span>
+                            <span className="text-text flex-1 truncate text-sm">
+                              {g.fullName}
+                            </span>
+                            <span className="text-text-muted shrink-0 text-[11px] tracking-wide uppercase">
+                              {t("insp.seats")} {g.seatNumber ?? "·"}
+                            </span>
+                            <button
+                              onClick={() => updateGuest(g.id, { seatNumber: null })}
+                              className="text-text-muted hover:text-brand shrink-0 text-xs"
+                              title={t("insp.unseat")}
+                            >
+                              ↺
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {warnings.length > 0 && (
             <ul className="border-danger/40 bg-danger/10 text-danger mt-4 space-y-1 rounded-[var(--radius-sm)] border p-3 text-sm">
@@ -719,7 +1244,7 @@ function DraggableTable({
       onClick={onSelect}
       {...listeners}
       {...attributes}
-      className="absolute touch-none transition"
+      className="absolute touch-none"
       style={{
         left: `${table.positionX * 100}%`,
         top: `${table.positionY * 100}%`,
@@ -727,6 +1252,11 @@ function DraggableTable({
         height: d.h,
         transform: `translate(-50%, -50%) ${CSS.Translate.toString(transform) ?? ""}`,
         zIndex: isDragging ? 20 : selected ? 10 : 2,
+        // No transition while dragging (instant follow); on drop, ease from the
+        // drop point to the snapped grid position.
+        transition: isDragging
+          ? undefined
+          : "left .2s ease-out, top .2s ease-out, transform .2s ease-out",
       }}
       aria-label={`Table ${table.number}, ${table.name}, ${seated}/${table.seatsCount}`}
     >
@@ -856,6 +1386,120 @@ function FeatureInspector({
         {t("insp.deleteLandmark")}
       </button>
     </div>
+  );
+}
+
+/** First+last initials for a seat chip. */
+function seatInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+/** Seat centres (in a 0..100 SVG box) around the table body. */
+function seatPositions(table: Table): { x: number; y: number }[] {
+  const n = Math.max(1, table.seatsCount);
+  const out: { x: number; y: number }[] = [];
+  const spread = (count: number, fixed: number, axis: "x" | "y") => {
+    for (let k = 0; k < count; k++) {
+      const tt = count === 1 ? 0.5 : k / (count - 1);
+      const v = 16 + tt * 68;
+      out.push(axis === "x" ? { x: v, y: fixed } : { x: fixed, y: v });
+    }
+  };
+  if (table.shape === "rectangle") {
+    const per = Math.ceil(n / 2);
+    const rest = n - per;
+    if (table.orientation === "vertical") {
+      spread(per, 22, "y");
+      spread(rest, 78, "y");
+    } else {
+      spread(per, 22, "x");
+      spread(rest, 78, "x");
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const a = (2 * Math.PI * i) / n - Math.PI / 2;
+      out.push({ x: 50 + 36 * Math.cos(a), y: 50 + 36 * Math.sin(a) });
+    }
+  }
+  return out;
+}
+
+/** A clickable seat map: each seat shows its occupant's initials (gold), empty
+ *  seats show the seat number; a shared seat turns red. Admins see exactly where
+ *  each guest sits and can fill empty seats by tapping them. */
+function SeatMap({
+  table,
+  guests,
+  onSeatClick,
+}: {
+  table: Table;
+  guests: GuestLite[];
+  onSeatClick: (seat: number) => void;
+}) {
+  const pos = seatPositions(table);
+  const bySeat = new Map<number, GuestLite[]>();
+  for (const g of guests)
+    if (g.seatNumber != null)
+      bySeat.set(g.seatNumber, [...(bySeat.get(g.seatNumber) ?? []), g]);
+  const body =
+    table.shape === "rectangle"
+      ? table.orientation === "vertical"
+        ? { x: 34, y: 18, w: 32, h: 64 }
+        : { x: 18, y: 34, w: 64, h: 32 }
+      : null;
+  // Rotate the whole map to match the table on the canvas; seat labels are
+  // counter-rotated so they stay upright.
+  const rot = table.shape === "rectangle" ? (table.rotation ?? 0) : 0;
+
+  return (
+    <svg viewBox="0 0 100 100" className="mx-auto block h-full w-full">
+      <g transform={rot ? `rotate(${rot} 50 50)` : undefined}>
+        {body ? (
+          <rect x={body.x} y={body.y} width={body.w} height={body.h} rx={4} fill="#161616" stroke="#C9A96E" strokeOpacity={0.5} strokeWidth={1} />
+        ) : (
+          <circle cx={50} cy={50} r={21} fill="#161616" stroke="#C9A96E" strokeOpacity={0.5} strokeWidth={1} />
+        )}
+        {pos.map((p, i) => {
+          const s = i + 1;
+          const occ = bySeat.get(s) ?? [];
+          const filled = occ.length >= 1;
+          const conflict = occ.length > 1;
+          return (
+            <g key={i} onClick={() => onSeatClick(s)} style={{ cursor: "pointer" }}>
+              <title>{filled ? occ.map((g) => g.fullName).join(", ") : `Seat ${s} — empty`}</title>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={8.5}
+                fill={filled ? (conflict ? "#E86B6B" : "#C9A96E") : "#242424"}
+                stroke={conflict ? "#E86B6B" : filled ? "#A8823A" : "#3A3A3A"}
+                strokeWidth={filled ? 1 : 0.8}
+              />
+              <text
+                x={p.x}
+                y={p.y + 1.9}
+                textAnchor="middle"
+                fontSize={filled ? 5 : 5.4}
+                fontFamily="'Instrument Sans',sans-serif"
+                fontWeight={filled ? 600 : 400}
+                fill={filled ? "#141210" : "#8f8f8f"}
+                transform={rot ? `rotate(${-rot} ${p.x} ${p.y})` : undefined}
+              >
+                {filled ? seatInitials(occ[0].fullName) : s}
+              </text>
+            </g>
+          );
+        })}
+      </g>
+      <text x={50} y={51.8} textAnchor="middle" fontSize={9} fontFamily="'Fraunces',serif" fill="#C9A96E">
+        {table.number}
+      </text>
+    </svg>
   );
 }
 

@@ -7,7 +7,7 @@ import QRCode from "qrcode";
 // well; a slightly larger quiet zone (margin 2) helps readers lock onto the
 // inverted pattern. Sits inside a thin gold border in the UI.
 const BASE = {
-  margin: 2,
+  margin: 1, // minimal quiet zone so the gold border sits close to the code
   color: { dark: "#E9D4A0", light: "#0F0F0F" },
   errorCorrectionLevel: "M" as const,
 };

@@ -19,6 +19,15 @@ const Patch = z.object({
     .optional(),
   roomWidth: z.number().int().min(120).max(1200).optional(),
   roomHeight: z.number().int().min(120).max(1200).optional(),
+  roomDrawings: z
+    .array(
+      z.object({
+        id: z.string(),
+        points: z.array(z.tuple([z.number(), z.number()])).max(2000),
+      }),
+    )
+    .max(200)
+    .optional(),
 });
 
 export async function PATCH(
@@ -29,7 +38,9 @@ export async function PATCH(
   if (denied) return denied;
 
   const { eventId } = await params;
-  const data = Patch.parse(await req.json());
+  const { roomDrawings, ...rest } = Patch.parse(await req.json());
+  const data: Record<string, unknown> = { ...rest };
+  if (roomDrawings !== undefined) data.roomDrawings = roomDrawings;
   const result = await prisma.event.updateMany({ where: { id: eventId }, data });
   if (result.count === 0)
     return NextResponse.json({ error: "Event not found" }, { status: 404 });

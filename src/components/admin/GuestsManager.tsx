@@ -76,6 +76,11 @@ export function GuestsManager({
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState<"selected" | "all" | null>(null);
+  const [page, setPage] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const PAGE_SIZE = 20;
 
   const tableById = useMemo(
     () => new Map(tables.map((t) => [t.id, t])),
@@ -131,6 +136,13 @@ export function GuestsManager({
   }, [guests, query, tableFilter]);
 
   const seatedCount = guests.filter((g) => g.tableId).length;
+
+  // Pagination — 20 per page, or the whole list when "show all" is on.
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = showAll
+    ? filtered
+    : filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   async function refresh() {
     const [gRes, tRes] = await Promise.all([
@@ -262,6 +274,43 @@ export function GuestsManager({
       if (res.ok) {
         setGuests((gs) => gs.filter((g) => g.id !== id));
         setEditId(null);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const toggleSelect = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((g) => selected.has(g.id));
+  const toggleSelectAll = () =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (allFilteredSelected) filtered.forEach((g) => next.delete(g.id));
+      else filtered.forEach((g) => next.add(g.id));
+      return next;
+    });
+
+  async function bulkDelete(scope: "selected" | "all") {
+    setBusy(true);
+    setConfirmBulk(null);
+    const ids = scope === "selected" ? [...selected] : undefined;
+    try {
+      const res = await fetch(`${base}/guests/bulk-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scope === "all" ? { all: true } : { ids }),
+      });
+      if (res.ok) {
+        if (scope === "all") setGuests([]);
+        else setGuests((gs) => gs.filter((g) => !selected.has(g.id)));
+        setSelected(new Set());
       }
     } finally {
       setBusy(false);
@@ -423,7 +472,10 @@ export function GuestsManager({
           />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(0);
+            }}
             placeholder="Search by name, group, or email…"
             className="border-border bg-button-dark text-text placeholder:text-text-muted w-full rounded-[var(--radius-sm)] border py-2 pr-3 pl-9 text-sm"
           />
@@ -431,14 +483,69 @@ export function GuestsManager({
         <Dropdown
           value={tableFilter}
           options={filterOptions}
-          onChange={setTableFilter}
+          onChange={(v) => {
+            setTableFilter(v);
+            setPage(0);
+          }}
           ariaLabel="Filter guests"
           className="w-44"
         />
       </div>
 
+      {/* Bulk selection bar */}
+      {guests.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <label className="text-text-muted flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              onChange={toggleSelectAll}
+            />
+            {selected.size > 0 ? `${selected.size} selected` : "Select all"}
+          </label>
+
+          {selected.size > 0 &&
+            (confirmBulk === "selected" ? (
+              <span className="flex items-center gap-2">
+                <span className="text-text-muted">Delete {selected.size} guest(s)?</span>
+                <button onClick={() => bulkDelete("selected")} disabled={busy} className="text-danger font-medium hover:underline">
+                  Delete
+                </button>
+                <button onClick={() => setConfirmBulk(null)} className="text-text-muted hover:text-text">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmBulk("selected")}
+                className="text-text-muted hover:text-danger inline-flex items-center gap-1.5"
+              >
+                <Trash2 size={14} /> Delete selected
+              </button>
+            ))}
+
+          <div className="ml-auto">
+            {confirmBulk === "all" ? (
+              <span className="flex items-center gap-2">
+                <span className="text-text-muted">Delete ALL {guests.length} guests?</span>
+                <button onClick={() => bulkDelete("all")} disabled={busy} className="text-danger font-medium hover:underline">
+                  Delete all
+                </button>
+                <button onClick={() => setConfirmBulk(null)} className="text-text-muted hover:text-text">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button onClick={() => setConfirmBulk("all")} className="text-text-muted/70 hover:text-danger text-xs">
+                Delete all
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* List */}
-      <div className="border-border mt-4 overflow-hidden rounded-[var(--radius-lg)] border">
+      <div className="border-border mt-3 overflow-hidden rounded-[var(--radius-lg)] border">
         {filtered.length === 0 ? (
           <div className="text-text-muted grid place-items-center gap-2 px-5 py-16 text-center text-sm">
             <Users size={26} className="text-text-muted/50" />
@@ -448,7 +555,7 @@ export function GuestsManager({
           </div>
         ) : (
           <ul>
-            {filtered.map((g) => {
+            {paged.map((g) => {
               const tl = tableLabel(g.tableId);
               const editing = editId === g.id;
               return (
@@ -478,6 +585,13 @@ export function GuestsManager({
                     />
                   ) : (
                     <div className="hover:bg-button-dark/40 flex items-center gap-3 px-4 py-3 transition">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(g.id)}
+                        onChange={() => toggleSelect(g.id)}
+                        aria-label={`Select ${g.fullName}`}
+                        className="shrink-0"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="text-text truncate text-sm font-medium">
                           {g.fullName}
@@ -519,6 +633,49 @@ export function GuestsManager({
           </ul>
         )}
       </div>
+
+      {/* Pagination */}
+      {filtered.length > PAGE_SIZE && (
+        <div className="text-text-muted mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span>
+            {showAll
+              ? `Showing all ${filtered.length}`
+              : `${safePage * PAGE_SIZE + 1}–${Math.min((safePage + 1) * PAGE_SIZE, filtered.length)} of ${filtered.length}`}
+          </span>
+          <div className="flex items-center gap-2">
+            {!showAll && (
+              <>
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={safePage === 0}
+                  className="border-border hover:bg-button-dark hover:border-brand/50 rounded-[var(--radius-sm)] border px-3 py-1.5 transition disabled:opacity-40"
+                >
+                  ← Prev
+                </button>
+                <span className="tabular-nums">
+                  Page {safePage + 1} / {pageCount}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                  disabled={safePage >= pageCount - 1}
+                  className="border-border hover:bg-button-dark hover:border-brand/50 rounded-[var(--radius-sm)] border px-3 py-1.5 transition disabled:opacity-40"
+                >
+                  Next →
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => {
+                setShowAll((s) => !s);
+                setPage(0);
+              }}
+              className="text-brand hover:underline"
+            >
+              {showAll ? "Paginate" : `Show all (${filtered.length})`}
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

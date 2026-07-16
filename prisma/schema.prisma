@@ -119,6 +119,7 @@ model Event {
   roomShape      String @default("rectangle")      // "rectangle" | "square" | "l-shape"
   roomWidth      Int    @default(360)              // relative units → map aspect ratio
   roomHeight     Int    @default(470)
+  roomDrawings   Json?                              // freehand shapes: [{id, points:[[x,y]…]}] normalized 0..1
   tableLabelStyle String @default("number")        // identify tables by "number" | "name"
 
   // Presentation

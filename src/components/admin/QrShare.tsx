@@ -57,7 +57,7 @@ export function QrShare({
       ctx.clip();
       ctx.fillStyle = "#0F0F0F";
       ctx.fillRect(0, 0, size, size);
-      const pad = size * 0.09;
+      const pad = size * 0.05;
       ctx.drawImage(img, pad, pad, size - pad * 2, size - pad * 2);
       ctx.restore();
       const bw = size * 0.02;
@@ -76,7 +76,7 @@ export function QrShare({
     <div className="flex flex-col items-center">
       {/* QR on a near-black tile with a thin gold border (Cherish Noir) */}
       <div
-        className="border-brand/60 overflow-hidden rounded-[var(--radius-sm)] border bg-[#0F0F0F] p-3"
+        className="border-brand/60 overflow-hidden rounded-[var(--radius-sm)] border bg-[#0F0F0F] p-1.5"
         dangerouslySetInnerHTML={{ __html: svg }}
       />
 

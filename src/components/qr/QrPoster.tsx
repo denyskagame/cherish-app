@@ -105,7 +105,7 @@ const CSS = `
 .q-couple { font-family: 'Fraunces', Georgia, serif; font-weight: 400; font-size: 32px; margin: 10px 0 0; color: #2B2620; text-wrap: balance; }
 .q-flourish { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 18px 0; }
 .q-flourish .q-line { height: 1px; width: 46px; background: #9A7B3F; opacity: .5; }
-.q-qr { width: 62mm; height: 62mm; display: block; background: #0F0F0F; padding: 4mm; border-radius: 3px; border: 1px solid #9A7B3F; box-shadow: 0 2px 10px rgba(0,0,0,.18); }
+.q-qr { width: 62mm; height: 62mm; display: block; background: #0F0F0F; padding: 2mm; border-radius: 3px; border: 1px solid #9A7B3F; box-shadow: 0 2px 10px rgba(0,0,0,.18); }
 .q-scan { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 22px; color: #9A7B3F; margin: 18px 0 0; }
 .q-sub { font-size: 13px; color: #6b6459; margin: 6px 0 0; }
 .q-fr { font-style: italic; color: #8A7F6C; margin-top: 2px; }

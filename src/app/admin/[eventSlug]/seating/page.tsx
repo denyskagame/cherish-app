@@ -5,7 +5,7 @@ import { getEventOr404 } from "@/lib/db/scoped";
 import { NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { validateSeating } from "@/lib/seating-validation";
-import { TableEditor } from "@/components/admin/TableEditor";
+import { TableEditor, type RoomDrawing } from "@/components/admin/TableEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +65,12 @@ export default async function SeatingEditorPage({
             height: event.roomHeight,
           }}
           initialWarnings={warnings}
+          initialDrawings={
+            Array.isArray(event.roomDrawings)
+              ? (event.roomDrawings as unknown as RoomDrawing[])
+              : []
+          }
+          labelStyle={event.tableLabelStyle === "name" ? "name" : "number"}
         />
       </div>
     </main>
