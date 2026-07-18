@@ -31,6 +31,13 @@ import {
   type AdminKey,
 } from "@/lib/i18n/admin";
 import { newTablePosition, place, clamp01 } from "@/lib/seating-arrange";
+import {
+  resolveSeatPositions,
+  seatBoxBody,
+  toSeatLayout,
+  type SeatSpot,
+} from "@/lib/seat-box";
+import { smoothPath, type RoomDrawing } from "@/lib/draw";
 
 // Drag-and-drop room editor (docs/01 §10). Bilingual (FR|EN), with undo of layout
 // changes and landmark-aware auto-arrange.
@@ -49,13 +56,6 @@ export interface RoomShell {
   shape: string;
   width: number;
   height: number;
-}
-
-/** A freehand shape drawn in the room (walls, aisles, the DJ corner…). Points
- *  are normalized 0..1; rendered as a smooth curve. */
-export interface RoomDrawing {
-  id: string;
-  points: [number, number][];
 }
 
 type Pt = [number, number];
@@ -122,27 +122,6 @@ function finalizeStroke(points: Pt[]): Pt[] {
 
   // Curve → simplify away the jitter, keep the shape; the spline smooths the rest.
   return rdp(points, 0.008);
-}
-
-/** Catmull-Rom → cubic Bézier: turns the raw captured points into a smooth curve
- *  through them, so a shaky hand-drawn stroke renders as a clean line. */
-function smoothPath(points: [number, number][], W: number, H: number): string {
-  if (points.length < 2) return "";
-  const p = points.map(([x, y]) => [x * W, y * H] as [number, number]);
-  if (p.length === 2) return `M ${p[0][0]} ${p[0][1]} L ${p[1][0]} ${p[1][1]}`;
-  let d = `M ${p[0][0]} ${p[0][1]}`;
-  for (let i = 0; i < p.length - 1; i++) {
-    const p0 = p[i - 1] ?? p[i];
-    const p1 = p[i];
-    const p2 = p[i + 1];
-    const p3 = p[i + 2] ?? p2;
-    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
-    d += ` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`;
-  }
-  return d;
 }
 
 type Snap = {
@@ -1418,56 +1397,6 @@ function seatInitials(name: string): string {
     .join("");
 }
 
-/** Seat centres (in a 0..100 SVG box) around the table body. */
-function seatPositions(table: Table): { x: number; y: number }[] {
-  const n = Math.max(1, table.seatsCount);
-  const out: { x: number; y: number }[] = [];
-  const spread = (count: number, fixed: number, axis: "x" | "y") => {
-    for (let k = 0; k < count; k++) {
-      const tt = count === 1 ? 0.5 : k / (count - 1);
-      const v = 16 + tt * 68;
-      out.push(axis === "x" ? { x: v, y: fixed } : { x: fixed, y: v });
-    }
-  };
-  if (table.shape === "rectangle") {
-    const per = Math.ceil(n / 2);
-    const rest = n - per;
-    if (table.orientation === "vertical") {
-      spread(per, 22, "y");
-      spread(rest, 78, "y");
-    } else {
-      spread(per, 22, "x");
-      spread(rest, 78, "x");
-    }
-  } else {
-    for (let i = 0; i < n; i++) {
-      const a = (2 * Math.PI * i) / n - Math.PI / 2;
-      out.push({ x: 50 + 36 * Math.cos(a), y: 50 + 36 * Math.sin(a) });
-    }
-  }
-  return out;
-}
-
-/** A stored custom seat spot, normalized 0..1 within the seat box. */
-export type SeatSpot = { x: number; y: number };
-
-/** Read the custom seat layout off a table (JSON column), if any. */
-export function tableSeatLayout(table: Table): (SeatSpot | null)[] {
-  return Array.isArray(table.seatLayout)
-    ? (table.seatLayout as unknown as (SeatSpot | null)[])
-    : [];
-}
-
-/** Seat positions in the 0..100 box: custom spot where set, else computed. */
-function resolvedSeatPositions(table: Table): { x: number; y: number }[] {
-  const base = seatPositions(table);
-  const custom = tableSeatLayout(table);
-  return base.map((p, i) => {
-    const c = custom[i];
-    return c && typeof c.x === "number" ? { x: c.x * 100, y: c.y * 100 } : p;
-  });
-}
-
 /** Rotate (x,y) by `deg` around the box centre — used to convert a screen point
  *  back into the seat map's un-rotated coordinate space. */
 function rotatePoint(x: number, y: number, deg: number): { x: number; y: number } {
@@ -1503,17 +1432,18 @@ function SeatMap({
     moved: boolean;
   } | null>(null);
 
-  const pos = resolvedSeatPositions(table);
+  const pos = resolveSeatPositions(
+    table.shape,
+    table.orientation,
+    table.seatsCount,
+    toSeatLayout(table.seatLayout),
+  );
   const bySeat = new Map<number, GuestLite[]>();
   for (const g of guests)
     if (g.seatNumber != null)
       bySeat.set(g.seatNumber, [...(bySeat.get(g.seatNumber) ?? []), g]);
-  const body =
-    table.shape === "rectangle"
-      ? table.orientation === "vertical"
-        ? { x: 34, y: 18, w: 32, h: 64 }
-        : { x: 18, y: 34, w: 64, h: 32 }
-      : null;
+  const bodyShape = seatBoxBody(table.shape, table.orientation);
+  const body = bodyShape.kind === "rect" ? bodyShape : null;
   // Rotate the whole map to match the table on the canvas; seat labels are
   // counter-rotated so they stay upright.
   const rot = table.shape === "rectangle" ? (table.rotation ?? 0) : 0;

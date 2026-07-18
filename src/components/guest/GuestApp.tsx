@@ -17,6 +17,7 @@ import { MenuScreen } from "./MenuScreen";
 import { ScheduleTimeline } from "./ScheduleTimeline";
 import { MessageBook } from "./MessageBook";
 import { Rings, Flourish } from "./ornaments";
+import type { RoomDrawing } from "@/lib/draw";
 import type {
   AmbiguousOption,
   EventInfo,
@@ -32,6 +33,7 @@ interface Props {
   weddingDates: Record<"en" | "fr", string>;
   tables: Table[];
   features: VenueFeature[];
+  drawings: RoomDrawing[];
   brand: string;
   initialLocale: "en" | "fr";
   enabledLocales: ("en" | "fr")[];
@@ -63,6 +65,7 @@ function GuestShell({
   weddingDates,
   tables,
   features,
+  drawings,
   brand,
   enabledLocales,
 }: Props) {
@@ -147,6 +150,7 @@ function GuestShell({
                 coupleNames={event.coupleNames}
                 tables={tables}
                 features={features}
+                drawings={drawings}
                 event={event}
                 brand={brand}
                 onSearchAgain={reset}

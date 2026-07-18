@@ -5,6 +5,7 @@ import { useLocale, useT } from "@/lib/i18n/client";
 import { PassCard } from "./PassCard";
 import { RoomMap } from "./RoomMap";
 import { TableZoom } from "./TableZoom";
+import type { RoomDrawing } from "@/lib/draw";
 import type { EventInfo, Seat } from "./types";
 
 // The identified-guest experience (docs/01 §1): the pass card, the room map
@@ -15,6 +16,7 @@ export function SeatFoundScreen({
   coupleNames,
   tables,
   features,
+  drawings,
   event,
   brand,
   onSearchAgain,
@@ -23,6 +25,7 @@ export function SeatFoundScreen({
   coupleNames: string;
   tables: Table[];
   features: VenueFeature[];
+  drawings: RoomDrawing[];
   event: EventInfo;
   brand: string;
   onSearchAgain: () => void;
@@ -43,7 +46,12 @@ export function SeatFoundScreen({
       )}
 
       {zoomed ? (
-        <TableZoom guest={guest} brand={brand} onBack={() => setZoomed(false)} />
+        <TableZoom
+          guest={guest}
+          brand={brand}
+          labelStyle={event.tableLabelStyle}
+          onBack={() => setZoomed(false)}
+        />
       ) : (
         <div className="reveal-down flex w-full flex-col items-center">
           <div className="mb-3 text-center">
@@ -63,6 +71,7 @@ export function SeatFoundScreen({
               roomWidth={event.roomWidth}
               roomHeight={event.roomHeight}
               labelStyle={event.tableLabelStyle}
+              drawings={drawings}
               onTapMyTable={() => setZoomed(true)}
             />
           </div>

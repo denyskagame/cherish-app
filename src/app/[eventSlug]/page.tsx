@@ -7,6 +7,7 @@ import { NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { getDictionaries } from "@/lib/i18n";
 import { GuestApp } from "@/components/guest/GuestApp";
+import { toRoomDrawings } from "@/lib/draw";
 import type { EventInfo } from "@/components/guest/types";
 
 // Guest-facing entry point (docs/01). The server loads the event, its tables, and
@@ -85,6 +86,7 @@ export default async function GuestEventPage({
       weddingDates={weddingDates}
       tables={tables}
       features={features}
+      drawings={toRoomDrawings(event.roomDrawings)}
       brand={org.brandPrimary}
       initialLocale={initialLocale}
       enabledLocales={enabled.length ? enabled : [initialLocale]}

@@ -28,6 +28,8 @@ export interface Seat {
   locationHintFr: string | null;
   tableShape: TableShape;
   tableOrientation: TableOrientation;
+  tableRotation: number;
+  tableSeatsCount: number;
   seatLayout: (SeatSpot | null)[] | null;
   seatmates: Seatmate[];
 }

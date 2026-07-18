@@ -5,7 +5,8 @@ import { getEventOr404 } from "@/lib/db/scoped";
 import { NotFoundError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
 import { validateSeating } from "@/lib/seating-validation";
-import { TableEditor, type RoomDrawing } from "@/components/admin/TableEditor";
+import { TableEditor } from "@/components/admin/TableEditor";
+import type { RoomDrawing } from "@/lib/draw";
 
 export const dynamic = "force-dynamic";
 

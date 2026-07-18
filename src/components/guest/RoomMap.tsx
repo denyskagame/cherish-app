@@ -1,5 +1,7 @@
 "use client";
 import type { Table, VenueFeature } from "@prisma/client";
+import { resolveSeatPositions, seatBoxBody, toSeatLayout } from "@/lib/seat-box";
+import { smoothPath, type RoomDrawing } from "@/lib/draw";
 import { RoomOutline } from "./RoomOutline";
 
 // The room map (docs/01 §7): the operator-defined room shell (shape + size) with
@@ -37,42 +39,27 @@ function halfExtents(t: Table) {
   return { hw: 18, hh: 18 };
 }
 
-/** Seat centers for a table, relative to its centre (before rotation). */
+/** Seat offsets from the table centre (before rotation), derived from the shared
+ *  0..100 seat box scaled to this table's footprint — so custom seat spots the
+ *  couple set in the admin console appear here too, exactly. */
 function seatOffsets(t: Table) {
-  const n = t.seatsCount;
   const g = halfExtents(t);
-  const out: { dx: number; dy: number }[] = [];
-  if (t.shape === "rectangle") {
-    const gap = 9;
-    const per = Math.ceil(n / 2);
-    const rest = n - per;
-    if (t.orientation === "vertical") {
-      const place = (count: number, dx: number) => {
-        for (let k = 0; k < count; k++) {
-          const tt = count === 1 ? 0.5 : k / (count - 1);
-          out.push({ dx, dy: -g.hh + tt * 2 * g.hh });
-        }
-      };
-      place(per, -g.hw - gap);
-      place(rest, g.hw + gap);
-    } else {
-      const place = (count: number, dy: number) => {
-        for (let k = 0; k < count; k++) {
-          const tt = count === 1 ? 0.5 : k / (count - 1);
-          out.push({ dx: -g.hw + tt * 2 * g.hw, dy });
-        }
-      };
-      place(per, -g.hh - gap);
-      place(rest, g.hh + gap);
-    }
+  const bodyBox = seatBoxBody(t.shape, t.orientation);
+  const box = resolveSeatPositions(
+    t.shape,
+    t.orientation,
+    t.seatsCount,
+    toSeatLayout(t.seatLayout),
+  );
+  let sx: number;
+  let sy: number;
+  if (bodyBox.kind === "circle") {
+    sx = sy = g.hw / bodyBox.r;
   } else {
-    const orbit = g.hw + 10;
-    for (let i = 0; i < n; i++) {
-      const a = (2 * Math.PI * i) / n - Math.PI / 2;
-      out.push({ dx: orbit * Math.cos(a), dy: orbit * Math.sin(a) });
-    }
+    sx = g.hw / (bodyBox.w / 2);
+    sy = g.hh / (bodyBox.h / 2);
   }
-  return out;
+  return box.map((p) => ({ dx: (p.x - 50) * sx, dy: (p.y - 50) * sy }));
 }
 
 function Landmark({
@@ -158,6 +145,7 @@ interface Props {
   roomWidth?: number;
   roomHeight?: number;
   labelStyle?: "number" | "name";
+  drawings?: RoomDrawing[];
   onTapMyTable?: () => void;
 }
 
@@ -172,6 +160,7 @@ export function RoomMap({
   roomWidth = 360,
   roomHeight = 470,
   labelStyle = "number",
+  drawings = [],
   onTapMyTable,
 }: Props) {
   const W = roomWidth || 360;
@@ -191,6 +180,20 @@ export function RoomMap({
         stroke={brand}
         gold={brand}
       />
+
+      {/* Freehand shapes the couple drew (walls / aisles / the DJ corner…) */}
+      {drawings.map((dr) => (
+        <path
+          key={dr.id}
+          d={smoothPath(dr.points, W, H)}
+          fill="none"
+          stroke={brand}
+          strokeOpacity={0.8}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
 
       {features.map((f) => (
         <Landmark key={f.id} f={f} W={W} H={H} brand={brand} locale={locale} />

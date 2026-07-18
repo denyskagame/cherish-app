@@ -1,21 +1,26 @@
 "use client";
 import { useLocale, useT } from "@/lib/i18n/client";
+import { resolveSeatPositions, seatBoxBody } from "@/lib/seat-box";
 import type { Seat } from "./types";
 
 // Tap-to-zoom single-table view (docs/01 §8): the table with seats around it
 // (initials in the dots), the guest's own seat gold + blinking, and a clear
-// avatar list of who's at the table with the guest highlighted.
+// avatar list of who's at the table with the guest highlighted. Uses the shared
+// seat box (0..100) scaled ×3, so the guest sees EXACTLY the admin's arrangement.
 const SZ = 300;
+const S = SZ / 100;
 const CX = SZ / 2;
 const CY = SZ / 2;
 
 export function TableZoom({
   guest,
   brand = "#C9A96E",
+  labelStyle = "number",
   onBack,
 }: {
   guest: Seat;
   brand?: string;
+  labelStyle?: "number" | "name";
   onBack: () => void;
 }) {
   const t = useT();
@@ -23,27 +28,21 @@ export function TableZoom({
   const tableName =
     (locale === "fr" && guest.tableNameFr) || guest.tableName || "";
   const seats = guest.seatmates;
-  const n = Math.max(seats.length, 1);
   const isRect = guest.tableShape === "rectangle";
+  const rot = isRect ? (guest.tableRotation ?? 0) : 0;
+  const body = seatBoxBody(guest.tableShape, guest.tableOrientation);
 
-  // Seat dot positions in ring/edge order — but honor a custom spot the couple
-  // placed for that seat (stored normalized 0..1; the seat box maps to 0..SZ).
-  const layout = guest.seatLayout ?? [];
+  // Seat centres straight from the shared box (custom spot where set), ×3 to SZ.
+  const boxPos = resolveSeatPositions(
+    guest.tableShape,
+    guest.tableOrientation,
+    Math.max(guest.tableSeatsCount, seats.length, 1),
+    guest.seatLayout,
+  );
   const pos = seats.map((s, i) => {
-    const custom = s.seatNumber != null ? layout[s.seatNumber - 1] : null;
-    if (custom && typeof custom.x === "number") {
-      return { x: custom.x * SZ, y: custom.y * SZ };
-    }
-    if (isRect) {
-      const per = Math.ceil(n / 2);
-      const top = i < per;
-      const row = top ? per : n - per;
-      const idx = top ? i : i - per;
-      const tt = row === 1 ? 0.5 : idx / (row - 1);
-      return { x: 46 + tt * (SZ - 92), y: top ? CY - 70 : CY + 70 };
-    }
-    const a = (2 * Math.PI * i) / n - Math.PI / 2;
-    return { x: CX + 112 * Math.cos(a), y: CY + 112 * Math.sin(a) };
+    const idx = s.seatNumber != null ? s.seatNumber - 1 : i;
+    const bp = boxPos[idx] ?? boxPos[i] ?? { x: 50, y: 50 };
+    return { x: bp.x * S, y: bp.y * S };
   });
 
   return (
@@ -55,16 +54,32 @@ export function TableZoom({
         <span aria-hidden>←</span> {t("seat.back")}
       </button>
 
-      <p className="text-text-muted text-[10px] tracking-[0.22em] uppercase">
-        {t("seat.table")}
-      </p>
-      <h2 className="font-display text-brand text-3xl leading-none">
-        {guest.tableNumber}
-      </h2>
-      {tableName && (
-        <p className="font-display text-text-muted mt-1 text-center text-sm italic">
-          {tableName}
-        </p>
+      {labelStyle === "name" && tableName ? (
+        <>
+          <p className="text-text-muted text-[10px] tracking-[0.22em] uppercase">
+            {t("seat.tableName")}
+          </p>
+          <h2 className="font-display text-brand text-3xl leading-tight italic">
+            {tableName}
+          </h2>
+          <p className="text-text-muted mt-1 text-xs">
+            {t("seat.table")} {guest.tableNumber}
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-text-muted text-[10px] tracking-[0.22em] uppercase">
+            {t("seat.table")}
+          </p>
+          <h2 className="font-display text-brand text-3xl leading-none">
+            {guest.tableNumber}
+          </h2>
+          {tableName && (
+            <p className="font-display text-text-muted mt-1 text-center text-sm italic">
+              {tableName}
+            </p>
+          )}
+        </>
       )}
 
       <svg
@@ -74,63 +89,66 @@ export function TableZoom({
         role="img"
         aria-label={t("seat.whoElse")}
       >
-        {/* table body */}
-        {isRect ? (
-          <rect
-            x={CX - 84}
-            y={CY - 40}
-            width={168}
-            height={80}
-            rx={12}
-            fill="#161616"
-            stroke={brand}
-            strokeOpacity={0.5}
-            strokeWidth={1.5}
-          />
-        ) : (
-          <circle
-            cx={CX}
-            cy={CY}
-            r={62}
-            fill="#161616"
-            stroke={brand}
-            strokeOpacity={0.5}
-            strokeWidth={1.5}
-          />
-        )}
+        {/* table body — same box as the admin seat map, rotated to match */}
+        <g transform={rot ? `rotate(${rot} ${CX} ${CY})` : undefined}>
+          {body.kind === "rect" ? (
+            <rect
+              x={body.x * S}
+              y={body.y * S}
+              width={body.w * S}
+              height={body.h * S}
+              rx={12}
+              fill="#161616"
+              stroke={brand}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
+            />
+          ) : (
+            <circle
+              cx={body.cx * S}
+              cy={body.cy * S}
+              r={body.r * S}
+              fill="#161616"
+              stroke={brand}
+              strokeOpacity={0.5}
+              strokeWidth={1.5}
+            />
+          )}
 
-        {seats.map((s, i) => {
-          const p = pos[i];
-          return (
-            <g key={i}>
-              {s.isYou && (
-                <circle cx={p.x} cy={p.y} r={20} fill="none" stroke={brand} strokeWidth={2}>
-                  <animate attributeName="r" values="18;26;18" dur="1.7s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="1;0;1" dur="1.7s" repeatCount="indefinite" />
-                </circle>
-              )}
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={18}
-                fill={s.isYou ? brand : "#242424"}
-                stroke={s.isYou ? "#A8823A" : "#3A3A3A"}
-                strokeWidth={s.isYou ? 1.5 : 1}
-              />
-              <text
-                x={p.x}
-                y={p.y + 4}
-                textAnchor="middle"
-                fontSize={11}
-                fontFamily="'Instrument Sans',sans-serif"
-                fontWeight="600"
-                fill={s.isYou ? "#141210" : "#D4CFC7"}
-              >
-                {s.initials}
-              </text>
-            </g>
-          );
-        })}
+          {seats.map((s, i) => {
+            const p = pos[i];
+            return (
+              <g key={i}>
+                {s.isYou && (
+                  <circle cx={p.x} cy={p.y} r={20} fill="none" stroke={brand} strokeWidth={2}>
+                    <animate attributeName="r" values="18;26;18" dur="1.7s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="1;0;1" dur="1.7s" repeatCount="indefinite" />
+                  </circle>
+                )}
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={18}
+                  fill={s.isYou ? brand : "#242424"}
+                  stroke={s.isYou ? "#A8823A" : "#3A3A3A"}
+                  strokeWidth={s.isYou ? 1.5 : 1}
+                />
+                <text
+                  x={p.x}
+                  y={p.y + 4}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fontFamily="'Instrument Sans',sans-serif"
+                  fontWeight="600"
+                  fill={s.isYou ? "#141210" : "#D4CFC7"}
+                  transform={rot ? `rotate(${-rot} ${p.x} ${p.y})` : undefined}
+                >
+                  {s.initials}
+                </text>
+              </g>
+            );
+          })}
+        </g>
       </svg>
 
       {/* who's here */}
