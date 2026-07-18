@@ -690,6 +690,24 @@ export function TableEditor({
     else if (unassigned.length)
       updateGuest(unassigned[0].id, { tableId: selected.id, seatNumber: seat });
   };
+  // Persist a custom seat position (normalized 0..1) for the selected table.
+  const handleSeatMove = (seat: number, x: number, y: number) => {
+    if (!selected) return;
+    const current = Array.isArray(selected.seatLayout)
+      ? (selected.seatLayout as unknown as (SeatSpot | null)[])
+      : [];
+    const layout: (SeatSpot | null)[] = Array.from(
+      { length: selected.seatsCount },
+      (_, i) => current[i] ?? null,
+    );
+    layout[seat - 1] = { x, y };
+    updateTableLocal(selected.id, {
+      seatLayout: layout as unknown as Table["seatLayout"],
+    });
+    patchTable(selected.id, {
+      seatLayout: layout,
+    } as unknown as Partial<Table>);
+  };
 
   const dispW = Math.round(room.width * CANVAS_PPU);
   const dispH = Math.round(room.height * CANVAS_PPU);
@@ -1069,6 +1087,7 @@ export function TableEditor({
                     table={selected}
                     guests={selectedTableGuests}
                     onSeatClick={handleSeatClick}
+                    onSeatMove={handleSeatMove}
                   />
                 </div>
 
@@ -1429,19 +1448,62 @@ function seatPositions(table: Table): { x: number; y: number }[] {
   return out;
 }
 
-/** A clickable seat map: each seat shows its occupant's initials (gold), empty
- *  seats show the seat number; a shared seat turns red. Admins see exactly where
- *  each guest sits and can fill empty seats by tapping them. */
+/** A stored custom seat spot, normalized 0..1 within the seat box. */
+export type SeatSpot = { x: number; y: number };
+
+/** Read the custom seat layout off a table (JSON column), if any. */
+export function tableSeatLayout(table: Table): (SeatSpot | null)[] {
+  return Array.isArray(table.seatLayout)
+    ? (table.seatLayout as unknown as (SeatSpot | null)[])
+    : [];
+}
+
+/** Seat positions in the 0..100 box: custom spot where set, else computed. */
+function resolvedSeatPositions(table: Table): { x: number; y: number }[] {
+  const base = seatPositions(table);
+  const custom = tableSeatLayout(table);
+  return base.map((p, i) => {
+    const c = custom[i];
+    return c && typeof c.x === "number" ? { x: c.x * 100, y: c.y * 100 } : p;
+  });
+}
+
+/** Rotate (x,y) by `deg` around the box centre — used to convert a screen point
+ *  back into the seat map's un-rotated coordinate space. */
+function rotatePoint(x: number, y: number, deg: number): { x: number; y: number } {
+  const r = (deg * Math.PI) / 180;
+  const dx = x - 50;
+  const dy = y - 50;
+  return {
+    x: 50 + dx * Math.cos(r) - dy * Math.sin(r),
+    y: 50 + dx * Math.sin(r) + dy * Math.cos(r),
+  };
+}
+
+/** A clickable, drag-to-arrange seat map: each seat shows its occupant's initials
+ *  (gold), empty seats show the seat number; a shared seat turns red. Tap an empty
+ *  seat to seat the next guest; drag any seat to place it exactly where you want. */
 function SeatMap({
   table,
   guests,
   onSeatClick,
+  onSeatMove,
 }: {
   table: Table;
   guests: GuestLite[];
   onSeatClick: (seat: number) => void;
+  onSeatMove?: (seat: number, x: number, y: number) => void;
 }) {
-  const pos = seatPositions(table);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const [drag, setDrag] = useState<{
+    seat: number;
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
+
+  const pos = resolvedSeatPositions(table);
   const bySeat = new Map<number, GuestLite[]>();
   for (const g of guests)
     if (g.seatNumber != null)
@@ -1456,8 +1518,44 @@ function SeatMap({
   // counter-rotated so they stay upright.
   const rot = table.shape === "rectangle" ? (table.rotation ?? 0) : 0;
 
+  const svgPoint = (e: RPointerEvent): { x: number; y: number } | null => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * 100,
+      y: ((e.clientY - rect.top) / rect.height) * 100,
+    };
+  };
+  const onDown = (e: RPointerEvent, s: number, base: { x: number; y: number }) => {
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    startRef.current = svgPoint(e);
+    setDrag({ seat: s, x: base.x, y: base.y, moved: false });
+  };
+  const onMove = (e: RPointerEvent) => {
+    if (!drag || !startRef.current) return;
+    const pt = svgPoint(e);
+    if (!pt) return;
+    // Convert the screen point into the group's un-rotated coordinate.
+    const u = rot ? rotatePoint(pt.x, pt.y, -rot) : pt;
+    const moved =
+      Math.hypot(pt.x - startRef.current.x, pt.y - startRef.current.y) > 3;
+    setDrag({ seat: drag.seat, x: u.x, y: u.y, moved: drag.moved || moved });
+  };
+  const onUp = () => {
+    if (!drag) return;
+    const d = drag;
+    setDrag(null);
+    startRef.current = null;
+    if (d.moved && onSeatMove) {
+      const cl = (v: number) => Math.max(3, Math.min(97, v));
+      onSeatMove(d.seat, cl(d.x) / 100, cl(d.y) / 100);
+    } else {
+      onSeatClick(d.seat);
+    }
+  };
+
   return (
-    <svg viewBox="0 0 100 100" className="mx-auto block h-full w-full">
+    <svg ref={svgRef} viewBox="0 0 100 100" className="mx-auto block h-full w-full">
       <g transform={rot ? `rotate(${rot} 50 50)` : undefined}>
         {body ? (
           <rect x={body.x} y={body.y} width={body.w} height={body.h} rx={4} fill="#161616" stroke="#C9A96E" strokeOpacity={0.5} strokeWidth={1} />
@@ -1469,26 +1567,34 @@ function SeatMap({
           const occ = bySeat.get(s) ?? [];
           const filled = occ.length >= 1;
           const conflict = occ.length > 1;
+          const live = drag?.seat === s ? { x: drag.x, y: drag.y } : p;
           return (
-            <g key={i} onClick={() => onSeatClick(s)} style={{ cursor: "pointer" }}>
+            <g
+              key={i}
+              onPointerDown={(e) => onDown(e, s, p)}
+              onPointerMove={onMove}
+              onPointerUp={onUp}
+              onPointerCancel={onUp}
+              style={{ cursor: drag?.seat === s ? "grabbing" : "grab", touchAction: "none" }}
+            >
               <title>{filled ? occ.map((g) => g.fullName).join(", ") : `Seat ${s} — empty`}</title>
               <circle
-                cx={p.x}
-                cy={p.y}
+                cx={live.x}
+                cy={live.y}
                 r={8.5}
                 fill={filled ? (conflict ? "#E86B6B" : "#C9A96E") : "#242424"}
                 stroke={conflict ? "#E86B6B" : filled ? "#A8823A" : "#3A3A3A"}
                 strokeWidth={filled ? 1 : 0.8}
               />
               <text
-                x={p.x}
-                y={p.y + 1.9}
+                x={live.x}
+                y={live.y + 1.9}
                 textAnchor="middle"
                 fontSize={filled ? 5 : 5.4}
                 fontFamily="'Instrument Sans',sans-serif"
                 fontWeight={filled ? 600 : 400}
                 fill={filled ? "#141210" : "#8f8f8f"}
-                transform={rot ? `rotate(${-rot} ${p.x} ${p.y})` : undefined}
+                transform={rot ? `rotate(${-rot} ${live.x} ${live.y})` : undefined}
               >
                 {filled ? seatInitials(occ[0].fullName) : s}
               </text>

@@ -4,6 +4,9 @@
 export type TableShape = "round" | "rectangle";
 export type TableOrientation = "horizontal" | "vertical";
 
+/** A custom seat spot, normalized 0..1 within the seat box. */
+export type SeatSpot = { x: number; y: number };
+
 /** One seat at the guest's own table, for the tap-to-zoom view. */
 export interface Seatmate {
   seatNumber: number | null;
@@ -25,6 +28,7 @@ export interface Seat {
   locationHintFr: string | null;
   tableShape: TableShape;
   tableOrientation: TableOrientation;
+  seatLayout: (SeatSpot | null)[] | null;
   seatmates: Seatmate[];
 }
 

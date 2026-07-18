@@ -26,8 +26,14 @@ export function TableZoom({
   const n = Math.max(seats.length, 1);
   const isRect = guest.tableShape === "rectangle";
 
-  // Seat dot positions in ring/edge order.
-  const pos = seats.map((_, i) => {
+  // Seat dot positions in ring/edge order — but honor a custom spot the couple
+  // placed for that seat (stored normalized 0..1; the seat box maps to 0..SZ).
+  const layout = guest.seatLayout ?? [];
+  const pos = seats.map((s, i) => {
+    const custom = s.seatNumber != null ? layout[s.seatNumber - 1] : null;
+    if (custom && typeof custom.x === "number") {
+      return { x: custom.x * SZ, y: custom.y * SZ };
+    }
     if (isRect) {
       const per = Math.ceil(n / 2);
       const top = i < per;

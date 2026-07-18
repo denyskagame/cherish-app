@@ -17,6 +17,10 @@ const Patch = z.object({
   rotation: z.number().optional(),
   locationHint: z.string().nullable().optional(),
   locationHintFr: z.string().nullable().optional(),
+  seatLayout: z
+    .array(z.object({ x: z.number(), y: z.number() }).nullable())
+    .nullable()
+    .optional(),
 });
 
 /** Persist a table edit. Changing `number` to one already in use SWAPS the two
@@ -29,7 +33,9 @@ export async function PATCH(
   if (denied) return denied;
 
   const { eventId, tableId } = await params;
-  const { number, ...rest } = Patch.parse(await req.json());
+  const { number, ...restRaw } = Patch.parse(await req.json());
+  // seatLayout is a JSON column; cast so Prisma accepts the shape.
+  const rest = restRaw as Record<string, unknown>;
 
   const table = await prisma.table.findFirst({ where: { id: tableId, eventId } });
   if (!table)

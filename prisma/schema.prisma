@@ -203,6 +203,7 @@ model Table {
   locationHintFr String?                          // bilingual pass-card cue
   positionX   Float    @default(0.5)              // 0..1 normalized on the room map
   positionY   Float    @default(0.5)
+  seatLayout  Json?                               // custom seat spots: [{x,y}|null] per seat, normalized 0..1 in the seat box
 
   event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   guests      Guest[]
