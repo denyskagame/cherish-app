@@ -1089,6 +1089,60 @@ export function TableEditor({
                     </p>
                   ))}
 
+                  {selected.shape === "rectangle" && (
+                    <div className="border-border/60 mt-3 border-t pt-3">
+                      <p className="text-text-muted mb-1.5 text-[11px] tracking-[0.14em] uppercase">
+                        {t("insp.tableSize")}
+                      </p>
+                      <div className="flex gap-4">
+                        <label className="text-text-muted flex-1 text-xs">
+                          {t("room.width")}
+                          <input
+                            type="range"
+                            min={20}
+                            max={90}
+                            step={2}
+                            value={Math.round(
+                              (selected.bodyW ??
+                                (selected.orientation === "vertical" ? 0.32 : 0.64)) *
+                                100,
+                            )}
+                            onChange={(e) => {
+                              const bodyW = Number(e.target.value) / 100;
+                              updateTableLocal(selected.id, { bodyW });
+                              debounced(`bw-${selected.id}`, () =>
+                                patchTable(selected.id, { bodyW }),
+                              );
+                            }}
+                            className="mt-1 w-full"
+                          />
+                        </label>
+                        <label className="text-text-muted flex-1 text-xs">
+                          {t("room.height")}
+                          <input
+                            type="range"
+                            min={20}
+                            max={90}
+                            step={2}
+                            value={Math.round(
+                              (selected.bodyH ??
+                                (selected.orientation === "vertical" ? 0.64 : 0.32)) *
+                                100,
+                            )}
+                            onChange={(e) => {
+                              const bodyH = Number(e.target.value) / 100;
+                              updateTableLocal(selected.id, { bodyH });
+                              debounced(`bh-${selected.id}`, () =>
+                                patchTable(selected.id, { bodyH }),
+                              );
+                            }}
+                            className="mt-1 w-full"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
                   {selectedTableGuests.length === 0 ? (
                     <p className="text-text-muted mt-3 text-sm">{t("insp.noOne")}</p>
                   ) : (
@@ -1437,12 +1491,14 @@ function SeatMap({
     table.orientation,
     table.seatsCount,
     toSeatLayout(table.seatLayout),
+    table.bodyW,
+    table.bodyH,
   );
   const bySeat = new Map<number, GuestLite[]>();
   for (const g of guests)
     if (g.seatNumber != null)
       bySeat.set(g.seatNumber, [...(bySeat.get(g.seatNumber) ?? []), g]);
-  const bodyShape = seatBoxBody(table.shape, table.orientation);
+  const bodyShape = seatBoxBody(table.shape, table.orientation, table.bodyW, table.bodyH);
   const body = bodyShape.kind === "rect" ? bodyShape : null;
   // Rotate the whole map to match the table on the canvas; seat labels are
   // counter-rotated so they stay upright.

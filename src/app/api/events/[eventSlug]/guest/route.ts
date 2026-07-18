@@ -41,6 +41,8 @@ function toSeat(g: {
     orientation: string;
     rotation: number;
     seatsCount: number;
+    bodyW: number | null;
+    bodyH: number | null;
     locationHint: string | null;
     locationHintFr: string | null;
     seatLayout: unknown;
@@ -72,6 +74,8 @@ function toSeat(g: {
       | "vertical",
     tableRotation: g.table?.rotation ?? 0,
     tableSeatsCount: g.table?.seatsCount ?? seatmates.length,
+    tableBodyW: g.table?.bodyW ?? null,
+    tableBodyH: g.table?.bodyH ?? null,
     seatLayout: Array.isArray(g.table?.seatLayout) ? g.table.seatLayout : null,
     seatmates,
   };

@@ -30,7 +30,12 @@ export function TableZoom({
   const seats = guest.seatmates;
   const isRect = guest.tableShape === "rectangle";
   const rot = isRect ? (guest.tableRotation ?? 0) : 0;
-  const body = seatBoxBody(guest.tableShape, guest.tableOrientation);
+  const body = seatBoxBody(
+    guest.tableShape,
+    guest.tableOrientation,
+    guest.tableBodyW,
+    guest.tableBodyH,
+  );
 
   // Seat centres straight from the shared box (custom spot where set), ×3 to SZ.
   const boxPos = resolveSeatPositions(
@@ -38,6 +43,8 @@ export function TableZoom({
     guest.tableOrientation,
     Math.max(guest.tableSeatsCount, seats.length, 1),
     guest.seatLayout,
+    guest.tableBodyW,
+    guest.tableBodyH,
   );
   const pos = seats.map((s, i) => {
     const idx = s.seatNumber != null ? s.seatNumber - 1 : i;

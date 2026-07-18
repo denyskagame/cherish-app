@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "tables" ADD COLUMN     "bodyW" DOUBLE PRECISION,
+ADD COLUMN     "bodyH" DOUBLE PRECISION;

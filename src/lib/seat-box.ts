@@ -11,40 +11,63 @@ export type BoxBody =
   | { kind: "circle"; cx: number; cy: number; r: number }
   | { kind: "rect"; x: number; y: number; w: number; h: number };
 
+/** Rectangle body size (fraction 0..1 of the box) → box dimensions, with the
+ *  orientation-based default when the couple hasn't resized it. */
+function rectDims(
+  orientation: string,
+  bodyW?: number | null,
+  bodyH?: number | null,
+): { w: number; h: number } {
+  const w = (bodyW ?? (orientation === "vertical" ? 0.32 : 0.64)) * 100;
+  const h = (bodyH ?? (orientation === "vertical" ? 0.64 : 0.32)) * 100;
+  return { w, h };
+}
+
 /** The table body within the 0..100 box. */
-export function seatBoxBody(shape: string, orientation: string): BoxBody {
+export function seatBoxBody(
+  shape: string,
+  orientation: string,
+  bodyW?: number | null,
+  bodyH?: number | null,
+): BoxBody {
   if (shape === "rectangle") {
-    return orientation === "vertical"
-      ? { kind: "rect", x: 34, y: 18, w: 32, h: 64 }
-      : { kind: "rect", x: 18, y: 34, w: 64, h: 32 };
+    const { w, h } = rectDims(orientation, bodyW, bodyH);
+    return { kind: "rect", x: 50 - w / 2, y: 50 - h / 2, w, h };
   }
   return { kind: "circle", cx: 50, cy: 50, r: 21 };
 }
 
-/** Auto seat centres in the 0..100 box (ring for round, edges for rectangle). */
+/** Auto seat centres in the 0..100 box (ring for round, hugging the rectangle's
+ *  edges — which follow its size). */
 export function computedSeatPositions(
   shape: string,
   orientation: string,
   seatsCount: number,
+  bodyW?: number | null,
+  bodyH?: number | null,
 ): Pt[] {
   const n = Math.max(1, seatsCount);
   const out: Pt[] = [];
-  const spread = (count: number, fixed: number, axis: "x" | "y") => {
-    for (let k = 0; k < count; k++) {
-      const tt = count === 1 ? 0.5 : k / (count - 1);
-      const v = 16 + tt * 68;
-      out.push(axis === "x" ? { x: v, y: fixed } : { x: fixed, y: v });
-    }
-  };
   if (shape === "rectangle") {
+    const { w, h } = rectDims(orientation, bodyW, bodyH);
+    const GAP = 12;
     const per = Math.ceil(n / 2);
     const rest = n - per;
+    const along = (count: number, fixed: number, axis: "x" | "y", span: number) => {
+      const lo = 50 - span / 2 + 4;
+      const hi = 50 + span / 2 - 4;
+      for (let k = 0; k < count; k++) {
+        const tt = count === 1 ? 0.5 : k / (count - 1);
+        const v = Math.max(6, Math.min(94, lo + tt * (hi - lo)));
+        out.push(axis === "x" ? { x: v, y: fixed } : { x: fixed, y: v });
+      }
+    };
     if (orientation === "vertical") {
-      spread(per, 22, "y");
-      spread(rest, 78, "y");
+      along(per, 50 - w / 2 - GAP, "y", h);
+      along(rest, 50 + w / 2 + GAP, "y", h);
     } else {
-      spread(per, 22, "x");
-      spread(rest, 78, "x");
+      along(per, 50 - h / 2 - GAP, "x", w);
+      along(rest, 50 + h / 2 + GAP, "x", w);
     }
   } else {
     for (let i = 0; i < n; i++) {
@@ -61,8 +84,10 @@ export function resolveSeatPositions(
   orientation: string,
   seatsCount: number,
   layout: (SeatSpot | null)[] | null | undefined,
+  bodyW?: number | null,
+  bodyH?: number | null,
 ): Pt[] {
-  const base = computedSeatPositions(shape, orientation, seatsCount);
+  const base = computedSeatPositions(shape, orientation, seatsCount, bodyW, bodyH);
   const custom = Array.isArray(layout) ? layout : [];
   return base.map((p, i) => {
     const c = custom[i];

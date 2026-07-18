@@ -15,6 +15,8 @@ const Patch = z.object({
   shape: z.enum(["round", "rectangle"]).optional(),
   orientation: z.enum(["horizontal", "vertical"]).optional(),
   rotation: z.number().optional(),
+  bodyW: z.number().min(0.1).max(1).nullable().optional(),
+  bodyH: z.number().min(0.1).max(1).nullable().optional(),
   locationHint: z.string().nullable().optional(),
   locationHintFr: z.string().nullable().optional(),
   seatLayout: z

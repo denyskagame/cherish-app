@@ -32,8 +32,9 @@ function landmarkLabel(f: VenueFeature, locale: "en" | "fr"): string {
 
 function halfExtents(t: Table) {
   if (t.shape === "rectangle") {
-    return t.orientation === "vertical"
-      ? { hw: 15, hh: 32 }
+    const b = seatBoxBody(t.shape, t.orientation, t.bodyW, t.bodyH);
+    return b.kind === "rect"
+      ? { hw: b.w / 2, hh: b.h / 2 }
       : { hw: 32, hh: 15 };
   }
   return { hw: 18, hh: 18 };
@@ -44,12 +45,14 @@ function halfExtents(t: Table) {
  *  couple set in the admin console appear here too, exactly. */
 function seatOffsets(t: Table) {
   const g = halfExtents(t);
-  const bodyBox = seatBoxBody(t.shape, t.orientation);
+  const bodyBox = seatBoxBody(t.shape, t.orientation, t.bodyW, t.bodyH);
   const box = resolveSeatPositions(
     t.shape,
     t.orientation,
     t.seatsCount,
     toSeatLayout(t.seatLayout),
+    t.bodyW,
+    t.bodyH,
   );
   let sx: number;
   let sy: number;

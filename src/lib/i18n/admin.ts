@@ -27,6 +27,7 @@ export const adminEn = {
   "common.yes": "Yes",
   "common.no": "No",
   "insp.seatMapTitle": "Seat map",
+  "insp.tableSize": "Table size",
   "insp.tapSeatToAssign": "Tap an empty seat to seat the next guest; drag a seat to move it.",
   "insp.seatConflict": "Two guests share seat {n}",
 
@@ -119,6 +120,7 @@ export const adminFr: Record<AdminKey, string> = {
   "common.yes": "Oui",
   "common.no": "Non",
   "insp.seatMapTitle": "Plan des places",
+  "insp.tableSize": "Taille de la table",
   "insp.tapSeatToAssign": "Touchez une place vide pour placer le prochain invité ; glissez une place pour la déplacer.",
   "insp.seatConflict": "Deux invités partagent la place {n}",
 

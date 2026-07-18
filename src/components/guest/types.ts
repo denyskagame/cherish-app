@@ -30,6 +30,8 @@ export interface Seat {
   tableOrientation: TableOrientation;
   tableRotation: number;
   tableSeatsCount: number;
+  tableBodyW: number | null;
+  tableBodyH: number | null;
   seatLayout: (SeatSpot | null)[] | null;
   seatmates: Seatmate[];
 }
